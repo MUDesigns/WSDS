@@ -29,6 +29,8 @@ static PAYLOAD: &[u8] = include_bytes!("../payload/client.zip");
 #[derive(Default)]
 struct Steam {
     child: Option<Child>,
+    /// Bumped by every new attempt; an older attempt stops reporting once it changes.
+    gen: u64,
 }
 type SteamState = Arc<Mutex<Steam>>;
 
@@ -217,9 +219,21 @@ async fn fonts(path: String) -> Result<Value, String> {
 #[tauri::command]
 fn steamcmd_start(app: AppHandle, steam: State<SteamState>, dir: String, user: String, password: String, guard: Option<String>) -> Result<(), String> {
     let steam = steam.inner().clone();
+    let gen = {
+        let mut st = steam.lock().unwrap();
+        st.gen += 1;
+        if let Some(c) = st.child.as_mut() {
+            let _ = c.kill();
+        }
+        st.child = None;
+        st.gen
+    };
     thread::spawn(move || {
-        if let Err(e) = steamcmd_run(&app, &steam, &dir, &user, &password, guard.as_deref().unwrap_or("")) {
-            let _ = app.emit("steam", json!({ "event": "error", "message": e }));
+        let r = steamcmd_run(&app, &steam, &dir, &user, &password, guard.as_deref().unwrap_or(""), gen);
+        if let Err(e) = r {
+            if steam.lock().unwrap().gen == gen {
+                let _ = app.emit("steam", json!({ "event": "error", "message": e }));
+            }
         }
     });
     Ok(())
@@ -244,9 +258,12 @@ fn wait_steamcmd_gone(max_secs: u64) {
 /// SteamCMD runs hidden; the sign-in goes on its command line (SteamCMD does not read piped input
 /// reliably on Windows) and status is read from its console log, which it writes line by line.
 /// A Steam Guard code is supplied on a retry with +set_steam_guard_code.
-fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, password: &str, guard: &str) -> Result<(), String> {
+fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, password: &str, guard: &str, gen: u64) -> Result<(), String> {
+    let current = || steam.lock().unwrap().gen == gen;
     let emit = |v: Value| {
-        let _ = app.emit("steam", v);
+        if current() {
+            let _ = app.emit("steam", v);
+        }
     };
     let line = |l: &str| emit(json!({ "event": "line", "line": l }));
     let game = PathBuf::from(dir);
@@ -262,12 +279,18 @@ fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, pass
             tools.display()
         ))?;
     }
-    line("Updating SteamCMD (takes a minute the first time)...");
-    let _ = Command::new(&exe).arg("+quit").current_dir(&tools).creation_flags(CREATE_NO_WINDOW).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
-    wait_steamcmd_gone(240);
+    if guard.trim().is_empty() {
+        line("Updating SteamCMD (takes a minute the first time)...");
+        let _ = Command::new(&exe).arg("+quit").current_dir(&tools).creation_flags(CREATE_NO_WINDOW).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        wait_steamcmd_gone(240);
+    }
 
     let log = tools.join("logs").join("console_log.txt");
     let mut pos = fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
+    // Steam's two-factor requests only appear in the connection log.
+    let clog = tools.join("logs").join("connection_log.txt");
+    let mut cpos = fs::metadata(&clog).map(|m| m.len()).unwrap_or(0);
+    let mut told_confirm = false;
     line(&format!("Signing in to Steam as {user}..."));
     let mut args: Vec<String> = Vec::new();
     if !guard.trim().is_empty() {
@@ -287,7 +310,16 @@ fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, pass
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("could not start SteamCMD: {e}"))?;
-    steam.lock().unwrap().child = Some(child);
+    {
+        let mut st = steam.lock().unwrap();
+        if st.gen != gen {
+            drop(st);
+            let mut child = child;
+            let _ = child.kill();
+            return Ok(());
+        }
+        st.child = Some(child);
+    }
 
     let mut need_code = false;
     let mut failure: Option<String> = None;
@@ -295,6 +327,9 @@ fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, pass
     let mut quiet_since_exit = 0;
     loop {
         thread::sleep(Duration::from_millis(700));
+        if !current() {
+            return Ok(()); // superseded by a newer attempt
+        }
         if let Ok(mut f) = fs::File::open(&log) {
             use std::io::{Seek, SeekFrom};
             let len = f.metadata().map(|m| m.len()).unwrap_or(0);
@@ -342,6 +377,29 @@ fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, pass
                     } else if low.starts_with("error! app") {
                         failure = Some(text.to_string());
                     }
+                }
+            }
+        }
+        if let Ok(mut f) = fs::File::open(&clog) {
+            use std::io::{Seek, SeekFrom};
+            let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+            if len < cpos {
+                cpos = 0;
+            }
+            if len > cpos {
+                let _ = f.seek(SeekFrom::Start(cpos));
+                let mut raw = Vec::new();
+                let _ = f.read_to_end(&mut raw);
+                cpos = len;
+                let text = String::from_utf8_lossy(&raw).to_lowercase();
+                if text.contains("need two-factor code") || text.contains("need steam guard") || text.contains("invalid login auth code") || text.contains("two-factor code mismatch") {
+                    need_code = true;
+                }
+                if text.contains("waiting for confirmation") && !told_confirm {
+                    told_confirm = true;
+                    need_code = true;
+                    emit(json!({ "event": "confirm_mobile" }));
+                    line("Steam is waiting for this sign-in to be approved in the Steam mobile app.");
                 }
             }
         }

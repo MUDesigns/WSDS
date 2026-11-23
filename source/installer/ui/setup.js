@@ -74,8 +74,8 @@ const PAGES = {
       <p class="muted">Sign in with a Steam account that owns Witchspire. The password is handed straight to SteamCMD (Valve's command-line Steam) and is not saved by this setup. SteamCMD remembers the sign-in on this machine so WSDS can update the game later.</p>
       <div class="cols"><label class="field"><span class="lbl">Steam account name</span><input type="text" id="sUser" value="${esc(st.steamUser)}" autocomplete="off" spellcheck="false"></label>
       <label class="field"><span class="lbl">Steam password</span><input type="password" id="sPass"></label></div>
-      <div class="row gap" id="sCodeRow" style="display:none"><label class="field" style="flex:1"><span class="lbl">Steam Guard code</span><input type="text" id="sCode" autocomplete="off" spellcheck="false"><span class="help">From the email Steam just sent, or the code in your Steam mobile app.</span></label><button class="btn small" id="sCodeBtn">Continue</button></div>
-      <div class="notice" id="sMobile" style="display:none">If you use the Steam mobile app, approve the sign-in there now. Setup continues by itself.</div>
+      <div class="row gap" id="sCodeRow" style="display:none"><label class="field" style="flex:1"><span class="lbl">Steam Guard code</span><input type="text" id="sCode" autocomplete="off" spellcheck="false"><span class="help">Steam mobile app: tap the shield (Steam Guard) and type the 5-character code it shows. Without the app: the code Steam emailed you.</span></label><button class="btn small" id="sCodeBtn">Continue</button></div>
+      <div class="notice" id="sMobile" style="display:none">Steam is waiting for approval: if the Steam mobile app shows a sign-in request, approve it now. If nothing appears, wait for the code box below and type the code from the app instead.</div>
       <div class="row gap"><button class="btn" id="sGo">Sign in and download</button><span class="muted" id="sPct"></span></div>
       <div class="bar" id="sBar"><div></div></div>
       <div class="log" id="log"></div>`,
@@ -214,11 +214,12 @@ function onSteam(e) {
   const p = e.payload;
   const idle = () => { $("#sGo").disabled = false; $("#bBack").disabled = false; $("#sBar").classList.remove("busy"); };
   if (p.event === "line") log(p.line);
-  if (p.event === "confirm_mobile") $("#sMobile").style.display = "";
+  if (p.event === "confirm_mobile") { $("#sMobile").style.display = ""; $("#sCodeRow").style.display = ""; }
   if (p.event === "logged_in") { $("#sMobile").style.display = "none"; log("Signed in. Downloading Witchspire (about 7 GB)...", "ok"); }
   if (p.event === "need_code") {
     idle(); $("#sGo").disabled = true; $("#sCodeRow").style.display = ""; $("#sCode").value = ""; $("#sCode").focus();
-    log(p.retry ? "Steam did not accept that code. Enter the newest code." : "Steam needs a Steam Guard code (check your email or the Steam mobile app).", "hd");
+    $("#sMobile").style.display = "none";
+    log(p.retry ? "Steam did not accept that code. Codes change every 30 seconds: enter the one showing now." : "Steam needs a Steam Guard code: open the Steam mobile app, tap the shield and type the code shown there.", "hd");
   }
   if (p.event === "percent") { const v = parseFloat(p.value); $("#sBar").classList.remove("busy"); $("#sBar").firstElementChild.style.width = `${v}%`; $("#sPct").textContent = `${v.toFixed(1)}%`; }
   if (p.event === "error") { log(p.message, "bad"); toast(p.message, true); idle(); }
