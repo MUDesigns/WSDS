@@ -8,7 +8,7 @@ let flavor = "client";
 let auto = null; // automated test run (WSCOOP_SETUP_AUTOTEST)
 const st = {
   gamePath: "", found: false, installed: false, running: false,
-  steamUser: "", steamPass: "", steamcmd: "",
+  steamUser: "", steamcmd: "",
   worldName: "Witchspire Dedicated Server", gamePort: 7777, maxPlayers: 8, joinPassword: "",
   remotePassword: "", remotePassword2: "", remotePort: 7780, firewall: true, service: true,
   result: null, uninstalled: false,
@@ -71,18 +71,18 @@ const PAGES = {
     skip: () => st.found,
     render: () => `
       <h2>Download Witchspire</h2>
-      <p class="muted">Sign in with a Steam account that owns Witchspire. SteamCMD remembers this sign-in on this machine so WSDS can update the game later; the password is not saved by this setup.</p>
+      <p class="muted">Sign in with a Steam account that owns Witchspire. The password is handed straight to SteamCMD (Valve's command-line Steam) and is not saved by this setup. SteamCMD remembers the sign-in on this machine so WSDS can update the game later.</p>
       <div class="cols"><label class="field"><span class="lbl">Steam account name</span><input type="text" id="sUser" value="${esc(st.steamUser)}" autocomplete="off" spellcheck="false"></label>
       <label class="field"><span class="lbl">Steam password</span><input type="password" id="sPass"></label></div>
-      <div class="row gap" id="sCodeRow" style="display:none"><label class="field" style="flex:1"><span class="lbl">Steam Guard code</span><input type="text" id="sCode" autocomplete="off"></label><button class="btn small" id="sCodeBtn">Send code</button></div>
-      <div class="notice" id="sMobile" style="display:none">Approve the sign-in in the Steam mobile app (or with the link Steam emailed you). Setup continues by itself.</div>
+      <div class="row gap" id="sCodeRow" style="display:none"><label class="field" style="flex:1"><span class="lbl">Steam Guard code</span><input type="text" id="sCode" autocomplete="off" spellcheck="false"><span class="help">From the email Steam just sent, or the code in your Steam mobile app.</span></label><button class="btn small" id="sCodeBtn">Continue</button></div>
+      <div class="notice" id="sMobile" style="display:none">If you use the Steam mobile app, approve the sign-in there now. Setup continues by itself.</div>
       <div class="row gap"><button class="btn" id="sGo">Sign in and download</button><span class="muted" id="sPct"></span></div>
       <div class="bar" id="sBar"><div></div></div>
       <div class="log" id="log"></div>`,
     mount: () => {
-      $("#sGo").onclick = startSteam;
-      $("#sCodeBtn").onclick = sendCode;
-      $("#sCode").onkeydown = (e) => e.key === "Enter" && sendCode();
+      $("#sGo").onclick = () => startSteam("");
+      $("#sCodeBtn").onclick = () => { const c = $("#sCode").value.trim(); if (c) startSteam(c); };
+      $("#sCode").onkeydown = (e) => { if (e.key === "Enter") $("#sCodeBtn").click(); };
     },
     validate: () => st.found ? null : "Download Witchspire first (or go back and pick a folder that already has it).",
   },
@@ -200,28 +200,30 @@ async function checkFolder() {
 }
 
 // ------------------------------------------------------------------ SteamCMD
-async function startSteam() {
-  st.steamUser = $("#sUser").value.trim(); st.steamPass = $("#sPass").value;
-  if (!st.steamUser || !st.steamPass) { toast("Enter your Steam account name and password.", true); return; }
-  $("#sGo").disabled = true; $("#bBack").disabled = true; $("#sBar").classList.add("busy");
-  log("Signing in to Steam as " + st.steamUser + "...", "hd");
-  await invoke("steamcmd_start", { dir: st.gamePath, user: st.steamUser, password: st.steamPass });
-  st.steamPass = ""; $("#sPass").value = "";
-}
-async function sendCode() {
-  const c = $("#sCode").value.trim(); if (!c) return;
-  await invoke("steamcmd_code", { code: c }); $("#sCode").value = ""; $("#sCodeRow").style.display = "none"; log("Steam Guard code sent.", "hd");
+let steamPass = "";
+async function startSteam(code) {
+  st.steamUser = $("#sUser").value.trim();
+  if ($("#sPass").value) steamPass = $("#sPass").value;
+  if (!st.steamUser || !steamPass) { toast("Enter your Steam account name and password.", true); return; }
+  $("#sGo").disabled = true; $("#bBack").disabled = true; $("#sCodeRow").style.display = "none";
+  $("#sBar").classList.add("busy");
+  if (code) log("Retrying with the Steam Guard code...", "hd");
+  await invoke("steamcmd_start", { dir: st.gamePath, user: st.steamUser, password: steamPass, guard: code || null });
 }
 function onSteam(e) {
   const p = e.payload;
+  const idle = () => { $("#sGo").disabled = false; $("#bBack").disabled = false; $("#sBar").classList.remove("busy"); };
   if (p.event === "line") log(p.line);
-  if (p.event === "need_code") { $("#sCodeRow").style.display = ""; $("#sCode").focus(); log("Steam asks for a Steam Guard code (email or authenticator app).", "hd"); }
   if (p.event === "confirm_mobile") $("#sMobile").style.display = "";
   if (p.event === "logged_in") { $("#sMobile").style.display = "none"; log("Signed in. Downloading Witchspire (about 7 GB)...", "ok"); }
+  if (p.event === "need_code") {
+    idle(); $("#sGo").disabled = true; $("#sCodeRow").style.display = ""; $("#sCode").value = ""; $("#sCode").focus();
+    log(p.retry ? "Steam did not accept that code. Enter the newest code." : "Steam needs a Steam Guard code (check your email or the Steam mobile app).", "hd");
+  }
   if (p.event === "percent") { const v = parseFloat(p.value); $("#sBar").classList.remove("busy"); $("#sBar").firstElementChild.style.width = `${v}%`; $("#sPct").textContent = `${v.toFixed(1)}%`; }
-  if (p.event === "error") { log(p.message, "bad"); toast(p.message, true); $("#sGo").disabled = false; $("#bBack").disabled = false; $("#sBar").classList.remove("busy"); }
+  if (p.event === "error") { log(p.message, "bad"); toast(p.message, true); idle(); }
   if (p.event === "done") {
-    st.found = true; st.steamcmd = p.steamcmd;
+    st.found = true; st.steamcmd = p.steamcmd; steamPass = ""; $("#sPass").value = "";
     $("#sBar").classList.remove("busy"); $("#sBar").firstElementChild.style.width = "100%"; $("#sPct").textContent = "100%";
     log("Witchspire downloaded.", "ok"); $("#bBack").disabled = false; loadFonts(st.gamePath);
     setTimeout(() => steps[cur] === "steam" && go(1), 800);
@@ -270,7 +272,7 @@ async function init() {
   $("#wClose").onclick = () => { if (busy) { toast("Please wait until setup has finished.", true); return; } win.close(); };
   $("#bBack").onclick = () => go(-1);
   $("#bNext").onclick = next;
-  document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName !== "BUTTON" && e.target.id !== "sCode") next(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName !== "BUTTON" && !["sUser", "sPass", "sCode"].includes(e.target.id)) next(); });
   await listen("progress", onProgress);
   await listen("steam", onSteam);
   st.gamePath = (await invoke("detect_game")) || (flavor === "server" ? "C:\\WitchspireServer" : "");
@@ -286,6 +288,14 @@ async function runAuto() {
   await shot("welcome"); await next(); await wait(300);
   $("#fPath").value = auto.gamePath; $("#fPath").dispatchEvent(new Event("input")); await wait(1500);
   await shot("folder");
+  if (auto.steamUser) {
+    await next(); await wait(300);
+    $("#sUser").value = auto.steamUser; $("#sPass").value = auto.steamPass; $("#sGo").click();
+    for (let i = 0; i < 400 && $("#sGo").disabled; i++) await wait(500);
+    await shot("steam");
+    await invoke("auto_done", { ok: !!$("#log").textContent.match(/rejected|Steam Guard/) });
+    return;
+  }
   if (auto.uninstall) { $("#fUninstall").click(); }
   else {
     await next();

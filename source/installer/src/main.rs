@@ -4,10 +4,10 @@
 
 use serde_json::{json, Value};
 use std::fs;
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -29,7 +29,6 @@ static PAYLOAD: &[u8] = include_bytes!("../payload/client.zip");
 #[derive(Default)]
 struct Steam {
     child: Option<Child>,
-    stdin: Option<ChildStdin>,
 }
 type SteamState = Arc<Mutex<Steam>>;
 
@@ -216,140 +215,161 @@ async fn fonts(path: String) -> Result<Value, String> {
 // ------------------------------------------------------------------ SteamCMD (server)
 
 #[tauri::command]
-fn steamcmd_start(app: AppHandle, steam: State<SteamState>, dir: String, user: String, password: String) -> Result<(), String> {
+fn steamcmd_start(app: AppHandle, steam: State<SteamState>, dir: String, user: String, password: String, guard: Option<String>) -> Result<(), String> {
     let steam = steam.inner().clone();
     thread::spawn(move || {
-        if let Err(e) = steamcmd_run(&app, &steam, &dir, &user, &password) {
+        if let Err(e) = steamcmd_run(&app, &steam, &dir, &user, &password, guard.as_deref().unwrap_or("")) {
             let _ = app.emit("steam", json!({ "event": "error", "message": e }));
         }
     });
     Ok(())
 }
 
-fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, password: &str) -> Result<(), String> {
+fn steamcmd_count() -> usize {
+    run_hidden("tasklist", &["/FI", "IMAGENAME eq steamcmd.exe", "/NH"])
+        .map(|o| String::from_utf8_lossy(&o.stdout).matches("steamcmd.exe").count())
+        .unwrap_or(0)
+}
+
+/// Waits until no SteamCMD process is left (it relaunches itself after updating).
+fn wait_steamcmd_gone(max_secs: u64) {
+    for _ in 0..max_secs {
+        if steamcmd_count() == 0 {
+            return;
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+}
+
+/// SteamCMD runs hidden; the sign-in goes on its command line (SteamCMD does not read piped input
+/// reliably on Windows) and status is read from its console log, which it writes line by line.
+/// A Steam Guard code is supplied on a retry with +set_steam_guard_code.
+fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, password: &str, guard: &str) -> Result<(), String> {
+    let emit = |v: Value| {
+        let _ = app.emit("steam", v);
+    };
+    let line = |l: &str| emit(json!({ "event": "line", "line": l }));
     let game = PathBuf::from(dir);
-    let tools = game.join("steamcmd");
+    // Outside the game folder: SteamCMD refuses to treat its own folder tree as an install dir.
+    let tools = PathBuf::from(std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into())).join("WSDS").join("steamcmd");
     let exe = tools.join("steamcmd.exe");
     fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
+    let _ = run_hidden("taskkill", &["/F", "/IM", "steamcmd.exe"]);
     if !exe.exists() {
-        let _ = app.emit("steam", json!({ "event": "line", "line": "Downloading SteamCMD from Valve..." }));
+        line("Downloading SteamCMD from Valve...");
         ps(&format!(
             "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip' -OutFile '{0}\\steamcmd.zip'; Expand-Archive -Force '{0}\\steamcmd.zip' '{0}'",
             tools.display()
         ))?;
     }
-    // First run: SteamCMD updates itself and may restart, which would swallow piped commands.
-    // Let that finish in a separate run before the interactive sign-in.
-    let _ = app.emit("steam", json!({ "event": "line", "line": "Updating SteamCMD (takes a minute the first time)..." }));
-    if let Ok(o) = Command::new(&exe).arg("+quit").creation_flags(CREATE_NO_WINDOW).stdin(Stdio::null()).output() {
-        for line in String::from_utf8_lossy(&o.stdout).lines().filter(|l| !l.trim().is_empty()).rev().take(3).collect::<Vec<_>>().into_iter().rev() {
-            let _ = app.emit("steam", json!({ "event": "line", "line": line.trim() }));
-        }
+    line("Updating SteamCMD (takes a minute the first time)...");
+    let _ = Command::new(&exe).arg("+quit").current_dir(&tools).creation_flags(CREATE_NO_WINDOW).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    wait_steamcmd_gone(240);
+
+    let log = tools.join("logs").join("console_log.txt");
+    let mut pos = fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
+    line(&format!("Signing in to Steam as {user}..."));
+    let mut args: Vec<String> = Vec::new();
+    if !guard.trim().is_empty() {
+        args.extend(["+set_steam_guard_code".into(), guard.trim().to_string()]);
     }
-    let _ = app.emit("steam", json!({ "event": "line", "line": "Starting SteamCMD..." }));
-    let mut child = Command::new(&exe)
+    args.extend([
+        "+force_install_dir".into(), game.to_string_lossy().to_string(),
+        "+login".into(), user.to_string(), password.to_string(),
+        "+app_update".into(), APP_ID.into(), "validate".into(), "+quit".into(),
+    ]);
+    let child = Command::new(&exe)
+        .args(&args)
+        .current_dir(&tools)
         .creation_flags(CREATE_NO_WINDOW)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| e.to_string())?;
-    let mut stdout = child.stdout.take().unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    // Commands go through stdin so the Steam password never appears on a command line.
-    writeln!(stdin, "force_install_dir \"{}\"", game.display()).ok();
-    writeln!(stdin, "login {} {}", user, password).ok();
-    stdin.flush().ok();
-    {
-        let mut st = steam.lock().unwrap();
-        st.child = Some(child);
-        st.stdin = Some(stdin);
-    }
+        .map_err(|e| format!("could not start SteamCMD: {e}"))?;
+    steam.lock().unwrap().child = Some(child);
 
-    let mut buf = [0u8; 4096];
-    let mut pending = String::new();
-    let mut logged_in = false;
-    let mut done = false;
+    let mut need_code = false;
+    let mut failure: Option<String> = None;
+    let mut last_pct = String::new();
+    let mut quiet_since_exit = 0;
     loop {
-        let n = match stdout.read(&mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => n,
+        thread::sleep(Duration::from_millis(700));
+        if let Ok(mut f) = fs::File::open(&log) {
+            use std::io::{Seek, SeekFrom};
+            let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+            if len < pos {
+                pos = 0;
+            }
+            if len > pos {
+                let _ = f.seek(SeekFrom::Start(pos));
+                let mut raw = Vec::new();
+                let _ = f.read_to_end(&mut raw);
+                pos = len;
+                for l in String::from_utf8_lossy(&raw).lines() {
+                    let text = l.split_once("] ").map(|(_, r)| r).unwrap_or(l).trim();
+                    if text.is_empty() || (!password.is_empty() && text.contains(password)) {
+                        continue;
+                    }
+                    let low = text.to_lowercase();
+                    if low.contains("progress:") {
+                        if let Some(p) = low.split("progress:").nth(1).and_then(|r| r.split_whitespace().next()) {
+                            emit(json!({ "event": "percent", "value": p }));
+                            let whole = p.split('.').next().unwrap_or("").to_string();
+                            if whole != last_pct {
+                                last_pct = whole;
+                                line(text);
+                            }
+                        }
+                        continue;
+                    }
+                    line(text);
+                    if low.contains("steam mobile app") || low.contains("confirm the login") {
+                        emit(json!({ "event": "confirm_mobile" }));
+                    }
+                    if low.contains("logged in ok") || low.contains("waiting for user info...ok") {
+                        emit(json!({ "event": "logged_in" }));
+                    }
+                    if low.contains("steam guard") || low.contains("two-factor") || low.contains("two factor") || low.contains("auth code") || low.contains("account logon denied") {
+                        need_code = true;
+                    }
+                    if low.contains("invalid password") {
+                        failure = Some("Steam rejected the account name or password.".into());
+                    } else if low.contains("rate limit") {
+                        failure = Some("Steam is rate-limiting sign-ins from this machine. Wait 30-60 minutes and try again.".into());
+                    } else if low.contains("no subscription") {
+                        failure = Some("This Steam account does not own Witchspire.".into());
+                    } else if low.starts_with("error! app") {
+                        failure = Some(text.to_string());
+                    }
+                }
+            }
+        }
+        let running = {
+            let mut st = steam.lock().unwrap();
+            let alive = matches!(st.child.as_mut().map(|c| c.try_wait()), Some(Ok(None)));
+            if !alive {
+                st.child = None;
+            }
+            alive
         };
-        pending.push_str(&String::from_utf8_lossy(&buf[..n]));
-        // Prompts end without a newline: check the partial buffer.
-        let lower = pending.to_lowercase();
-        if lower.contains("steam guard code:") || lower.contains("two-factor code:") || lower.contains("two factor code:") {
-            let _ = app.emit("steam", json!({ "event": "need_code" }));
-            pending.clear();
-            continue;
-        }
-        while let Some(i) = pending.find('\n') {
-            let line = pending[..i].trim_end_matches('\r').trim().to_string();
-            pending.drain(..=i);
-            if line.is_empty() {
-                continue;
-            }
-            // Never echo anything that could contain the password.
-            if line.to_lowercase().contains(&password.to_lowercase()) && !password.is_empty() {
-                continue;
-            }
-            let _ = app.emit("steam", json!({ "event": "line", "line": line }));
-            let l = line.to_lowercase();
-            if !logged_in && (l.contains("waiting for user info...ok") || l.contains("logged in ok")) {
-                logged_in = true;
-                let _ = app.emit("steam", json!({ "event": "logged_in" }));
-                if let Some(si) = steam.lock().unwrap().stdin.as_mut() {
-                    writeln!(si, "app_update {APP_ID} validate").ok();
-                    si.flush().ok();
-                }
-            }
-            if l.contains("confirm the login in the steam mobile app") || l.contains("check your email") {
-                let _ = app.emit("steam", json!({ "event": "confirm_mobile" }));
-            }
-            if l.contains("invalid password") || l.contains("failed (invalid") || l.contains("rate limit") || l.contains("account logon denied") && !l.contains("steam guard") {
-                let _ = app.emit("steam", json!({ "event": "error", "message": line.clone() }));
-            }
-            if l.contains("no subscription") {
-                let _ = app.emit("steam", json!({ "event": "error", "message": "This Steam account does not own Witchspire." }));
-            }
-            if l.contains("success! app") && l.contains("fully installed") {
-                done = true;
-                if let Some(si) = steam.lock().unwrap().stdin.as_mut() {
-                    writeln!(si, "quit").ok();
-                    si.flush().ok();
-                }
-            }
-            if l.starts_with("error! app") {
-                let _ = app.emit("steam", json!({ "event": "error", "message": line.clone() }));
-            }
-            if l.contains("update state") && l.contains("progress:") {
-                if let Some(p) = l.split("progress:").nth(1).and_then(|r| r.split_whitespace().next()) {
-                    let _ = app.emit("steam", json!({ "event": "percent", "value": p }));
-                }
+        if !running && steamcmd_count() == 0 {
+            // One more pass over the log after the last process is gone.
+            quiet_since_exit += 1;
+            if quiet_since_exit >= 2 {
+                break;
             }
         }
     }
-    {
-        let mut st = steam.lock().unwrap();
-        if let Some(mut c) = st.child.take() {
-            let _ = c.wait();
-        }
-        st.stdin = None;
+    if is_game_dir(&game) {
+        emit(json!({ "event": "done", "path": game.display().to_string(), "steamcmd": exe.display().to_string() }));
+        return Ok(());
     }
-    if done && is_game_dir(&game) {
-        let _ = app.emit("steam", json!({ "event": "done", "path": game.display().to_string(), "steamcmd": exe.display().to_string() }));
-        Ok(())
-    } else {
-        Err("SteamCMD finished without installing Witchspire (see the log above).".into())
+    if need_code && failure.is_none() {
+        emit(json!({ "event": "need_code", "retry": !guard.trim().is_empty() }));
+        return Ok(());
     }
-}
-
-#[tauri::command]
-fn steamcmd_code(steam: State<SteamState>, code: String) -> Result<(), String> {
-    let mut st = steam.lock().unwrap();
-    let si = st.stdin.as_mut().ok_or("SteamCMD is not running")?;
-    writeln!(si, "{}", code.trim()).map_err(|e| e.to_string())?;
-    si.flush().map_err(|e| e.to_string())
+    Err(failure.unwrap_or_else(|| "SteamCMD finished without installing Witchspire (see the log above).".into()))
 }
 
 #[tauri::command]
@@ -620,7 +640,7 @@ fn main() {
     ensure_webview2();
     tauri::Builder::default()
         .manage(SteamState::default())
-        .invoke_handler(tauri::generate_handler![info, auto_mark, auto_done, detect_game, check_game, fonts, steamcmd_start, steamcmd_code, steamcmd_cancel, install, uninstall, launch, open_path])
+        .invoke_handler(tauri::generate_handler![info, auto_mark, auto_done, detect_game, check_game, fonts, steamcmd_start, steamcmd_cancel, install, uninstall, launch, open_path])
         .run(tauri::generate_context!())
         .expect("error while running setup");
 }
