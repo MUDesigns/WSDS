@@ -48,7 +48,7 @@ function Api([string]$method, [string]$path, $body) {
 Write-Host "Looking up $Game mod $ModId..." -ForegroundColor Yellow
 $mod = (Api GET "/games/$Game/mods/$ModId" $null).data
 Write-Host "  mod '$($mod.name)' id=$($mod.id)"
-$existing = @((Api GET "/mods/$($mod.id)/files" $null).data)
+$existing = @((Api GET "/mods/$($mod.id)/files" $null).data.mod_files)
 Write-Host "  $($existing.Count) file(s) already on the page"
 
 foreach ($f in $files) {
@@ -90,4 +90,4 @@ foreach ($f in $files) {
         }).data
     Write-Host "  created mod file $($file.id)" -ForegroundColor Green
 }
-Write-Host "`nDone. Check https://www.nexusmods.com/$Game/mods/$ModId?tab=files" -ForegroundColor Green
+Write-Host "`nDone. Check https://www.nexusmods.com/$Game/mods/${ModId}?tab=files" -ForegroundColor Green
