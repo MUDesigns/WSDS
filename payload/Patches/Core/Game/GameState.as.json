@@ -1,0 +1,42 @@
+{
+ "path": "Core/Game/GameState.as",
+ "vanilla": "76B1961E7530F5B31D3061FD06AD3977AC156B9F623A91AD8CDE68703A25637B",
+ "patched": "373B96D412AF550228C736EB69BD06347576E4E35B08056245F25590195A667E",
+ "hunks": [
+  {
+   "at": 42,
+   "remove": [],
+   "add": [
+    "    // [WSCoop] On the server every SetTimeOfDay sends a reliable multicast (RPC_ExplicitServerUpdateEvent)\r\n",
+    "    // to all clients. Doing it every tick overflows the reliable buffer of a client that is still loading\r\n",
+    "    // and gets it kicked (RPCReliableBufferOverflow). Clients keep updating locally every frame; the\r\n",
+    "    // server only re-syncs a few times per second.\r\n",
+    "    private float WSServerTimeSyncAccumulator = 0;\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 47,
+   "remove": [],
+   "add": [
+    "            if (System::IsServer() && Gameplay::GetNumPlayerControllers() > 0)\r\n",
+    "            {\r\n",
+    "                WSServerTimeSyncAccumulator += DeltaSeconds;\r\n",
+    "                if (WSServerTimeSyncAccumulator < 0.5)\r\n",
+    "                    return;\r\n",
+    "                WSServerTimeSyncAccumulator = 0;\r\n",
+    "            }\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 96,
+   "remove": [
+    "        return DaySequenceActor.InitialTimeOfDay + GetWorldTimeSeconds() * Math::HOURS_IN_A_SECOND * DaySequenceActor.DayLength / DaySequenceActor.TimePerCycle;\r\n"
+   ],
+   "add": [
+    "        return DaySequenceActor.InitialTimeOfDay + WSCoop::TimeOffsetHours() /* [WSCoop] admin time of day */ + GetWorldTimeSeconds() * Math::HOURS_IN_A_SECOND * DaySequenceActor.DayLength / DaySequenceActor.TimePerCycle;\r\n"
+   ]
+  }
+ ]
+}

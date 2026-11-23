@@ -1,0 +1,16 @@
+{
+ "path": "UserInterface/FrontEnd/MainMenu/StartGame/StartGameWidget.as",
+ "vanilla": "F7C9637C2D626387BC3D29CAD47503ADBA36CF3A7CC0C641D0D91F57C86C5625",
+ "patched": "FCB089E1513C5B50AEC3006CCDACB3029A23D591AA32A05389796C08F189B08D",
+ "hunks": [
+  {
+   "at": 4,
+   "remove": [
+    "    private TSubclassOf<UCreateWorldModalWidget> CreateWorldWidgetModalClass;\r\n"
+   ],
+   "add": [
+    "    TSubclassOf<UCreateWorldModalWidget> CreateWorldWidgetModalClass; // [WSCoop] readable by the Join Dedicated Server dialog\r\n"
+   ]
+  }
+ ]
+}

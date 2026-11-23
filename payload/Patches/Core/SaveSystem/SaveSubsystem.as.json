@@ -1,0 +1,26 @@
+{
+ "path": "Core/SaveSystem/SaveSubsystem.as",
+ "vanilla": "3CE90E8CB601F513546BFB95310C2D78054C07F7DF3FE9E10684B50BCE06C1B9",
+ "patched": "B3BD7E292A1F27FB4D8969D3FAAFB1EA2B61B15C37D80E1D00D804F3018B4206",
+ "hunks": [
+  {
+   "at": 249,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "        // [WSCoop] Direct-IP dedicated-server clients have no online identity; use the id they reported.\r\n",
+    "        if (WSIdentity::IsAnonymous(Player))\r\n",
+    "        {\r\n",
+    "            FString WSName = WSIdentity::GetSaveName(Player);\r\n",
+    "            if (WSName.IsEmpty())\r\n",
+    "                WSName = f\"ws_name_{Player.PlayerState.GetPlayerName().GetHash()}\";\r\n",
+    "            Identity.Epic = WSName;\r\n",
+    "            Identity.Steam = WSName;\r\n",
+    "            WSDS::Info(f\"Registered '{Player.PlayerState.GetPlayerName()}' with save name '{WSName}'\");\r\n",
+    "            return true;\r\n",
+    "        }\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}

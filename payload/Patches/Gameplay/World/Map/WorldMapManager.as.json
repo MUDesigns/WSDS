@@ -1,0 +1,58 @@
+{
+ "path": "Gameplay/World/Map/WorldMapManager.as",
+ "vanilla": "D607BF247B3B562E11254743DDB719B75CD4F1999A27D34584BA259132ADA9C5",
+ "patched": "F45553C37795037D882BDCA40BDDE2BEFFF0C1EE2D91D840FD26700520DCA77F",
+ "hunks": [
+  {
+   "at": 542,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] The rest only redraws the fog texture, which a headless (-nullrhi) server cannot do.\r\n",
+    "        if (System::IsDedicatedServer() || WSDS::IsHeadlessHost())\r\n",
+    "            return;\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 733,
+   "remove": [
+    "        Rendering::BeginDrawCanvasToRenderTarget(FogRenderTarget, Canvas, RenderTargetSize, Context);\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] Headless (-nullrhi) servers have no canvas to draw into. Keep the saved discovery\r\n",
+    "        // bookkeeping (bitmask), skip only the drawing.\r\n",
+    "        if (FogRenderTarget == nullptr)\r\n",
+    "            return;\r\n",
+    "        const bool bCanDraw = !System::IsDedicatedServer() && !WSDS::IsHeadlessHost();\r\n",
+    "        if (bCanDraw)\r\n",
+    "            Rendering::BeginDrawCanvasToRenderTarget(FogRenderTarget, Canvas, RenderTargetSize, Context);\r\n",
+    "        if (Canvas == nullptr)\r\n",
+    "            RenderTargetSize = FVector2D(FogRenderTarget.SizeX, FogRenderTarget.SizeY);\r\n"
+   ]
+  },
+  {
+   "at": 741,
+   "remove": [
+    "        Canvas.DrawMaterial(FogUndiscoveredMaterial, TextureCoords, Radius, FVector2D::ZeroVector);\r\n"
+   ],
+   "add": [
+    "        if (Canvas != nullptr)\r\n",
+    "            Canvas.DrawMaterial(FogUndiscoveredMaterial, TextureCoords, Radius, FVector2D::ZeroVector);\r\n"
+   ]
+  },
+  {
+   "at": 757,
+   "remove": [
+    "        Rendering::EndDrawCanvasToRenderTarget(Context);\r\n",
+    "        FogMaterialInstance.SetTextureParameterValue(FogMaterialCutoutParamName, FogRenderTarget);\r\n"
+   ],
+   "add": [
+    "        if (bCanDraw)\r\n",
+    "        {\r\n",
+    "            Rendering::EndDrawCanvasToRenderTarget(Context);\r\n",
+    "            FogMaterialInstance.SetTextureParameterValue(FogMaterialCutoutParamName, FogRenderTarget);\r\n",
+    "        }\r\n"
+   ]
+  }
+ ]
+}

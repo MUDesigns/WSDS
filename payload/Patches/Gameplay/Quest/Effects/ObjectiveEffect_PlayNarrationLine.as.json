@@ -1,0 +1,16 @@
+{
+ "path": "Gameplay/Quest/Effects/ObjectiveEffect_PlayNarrationLine.as",
+ "vanilla": "B71DFFEDDCF98123BAFDEA7FCD81C6A641CB05B3960ECA87EB1AD8EEA6574AB0",
+ "patched": "F68BB5E92EA6DD643204FBB44E0A446B3FCB3E3D6ED1C92C1DC27004DD9FE0DA",
+ "hunks": [
+  {
+   "at": 35,
+   "remove": [
+    "            if (System::IsServer())\r\n"
+   ],
+   "add": [
+    "            if (System::IsServer() && WSCoopQuests::IsFirstWorldCompletion()) // [WSCoop] once per world\r\n"
+   ]
+  }
+ ]
+}

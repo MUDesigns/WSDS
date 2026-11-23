@@ -148,12 +148,22 @@ inside it.
 * `source/wsds` - WSDS (`cargo build --release`).
 * `source/installer` - both setup programs (`--features client` / `--features server`).
 * `payload/Script/Mods` - the mod's own Angelscript code (`WSDedicated`, `WSCoop`).
-* `BuildPackage.ps1` - snapshots the installed mod into `payload/` (needs a local install where the patches
-  are applied). `BuildInstallers.ps1` - packs the payloads and builds both setup programs into `dist/`.
+* `payload/Patches` - the changes the mod makes to the game's own scripts, as exact line patches. Install.ps1
+  applies them to your game files and checks the result against the expected SHA-256 (it refuses if a game
+  update changed one of those files). Only the few original lines the mod replaces are included.
+* `BuildPackage.ps1` - rebuilds `payload/` from an install where the mod is applied (`source/build/make_patches.py`).
+  `BuildInstallers.ps1` - builds WSDS, both setup programs (`dist/`) and the GitHub release assets
+  (`dist/github-release`: WSDS, the server update package used by the updater, SHA256SUMS.txt).
 
-This repository does not contain any of Witchspire's own files. The edited copies of game scripts the mod
-needs (`payload/Patched`), the game's fonts and Epic's Oodle library (`tools/oo2core_9_win64.dll`) are
-not redistributed here. See `tools/README.md` for the third-party tools.
+This repository does not contain Witchspire's own files, its fonts or Epic's Oodle library
+(`tools/oo2core_9_win64.dll`). See `tools/README.md` for the third-party tools.
+
+## Updates
+
+WSDS keeps a server up to date by itself: every few hours it looks at the latest release of this repository.
+When a newer version is out (and, by default, nobody is online) it downloads `WSDS-Server-Update-<version>.zip`,
+checks it against `SHA256SUMS.txt`, saves and stops the server, installs it and restarts. Settings > Updates
+has the options and "Check now" / "Update now", which also work for a remote server.
 
 Witchspire is a trademark of its respective owners. This is an unofficial fan project and is not
 affiliated with or endorsed by the game's developers or publishers.

@@ -1,0 +1,42 @@
+{
+ "path": "Gameplay/Interaction/Interactions/Interaction_Harvestable.as",
+ "vanilla": "450FDC073214F5976FFE46F57BA6A69D1F278D1957404622DC1FF983E430BB8B",
+ "patched": "A596951CEAB6B1965CBCF48859E8360BB7FFCD93FDB618E256441CD9115704B0",
+ "hunks": [
+  {
+   "at": 17,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "        // [WSCoop] Per-player harvesting: each player gathers level-placed nodes for themselves; the node\r\n",
+    "        // stays up for everyone else (and regrows for this player after its usual respawn time).\r\n",
+    "        if (Harvestable != nullptr && Harvestable.IsActivated() && WSCoopLoot::IsPerPlayerHarvest(Harvestable))\r\n",
+    "        {\r\n",
+    "            if (WSCoopLoot::BlockRepeatHarvest(Harvestable, Player))\r\n",
+    "                return;\r\n",
+    "            if (DoubleDropChanceAttribute.IsValid())\r\n",
+    "                TryDoubleDrop(Context);\r\n",
+    "            GrantLoot(Player, LootComponent);\r\n",
+    "            WSCoopLoot::MarkHarvested(Harvestable, WSCoop::PlayerKey(Player), WSCoop::PlayerName(Player));\r\n",
+    "            return;\r\n",
+    "        }\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 47,
+   "remove": [
+    "        const TArray<UItemStack> Loot = LootComponent.GenerateLoot();\r\n"
+   ],
+   "add": [
+    "        TArray<UItemStack> Loot = LootComponent.GenerateLoot();\r\n",
+    "        // [WSCoop] Coven synergy: chance of a bonus roll per nearby coven member.\r\n",
+    "        if (WSCoopProgression::RollCovenBonusHarvest(Player))\r\n",
+    "        {\r\n",
+    "            Loot.Append(LootComponent.GenerateLoot());\r\n",
+    "            WSCoop::Info(f\"Coven harvest bonus for {WSCoop::PlayerName(Player)}\");\r\n",
+    "        }\r\n"
+   ]
+  }
+ ]
+}

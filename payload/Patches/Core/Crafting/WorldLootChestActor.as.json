@@ -1,0 +1,26 @@
+{
+ "path": "Core/Crafting/WorldLootChestActor.as",
+ "vanilla": "BCA6ABD836EA91FC30D823C6A614E398DBA5FCDBFB3BAAD2133815F5947BDC64",
+ "patched": "DAC5C3E9BBA6CA46341B9C9FBE3514DA9BE9C10658FDC6862DEB0AC6E661E63C",
+ "hunks": [
+  {
+   "at": 144,
+   "remove": [],
+   "add": [
+    "        WSCoopLoot::ResetContainer(this); // [WSCoop] dungeon reset: everyone may loot again\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 152,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] Per-player instanced loot: every player gets their own roll from this chest, straight\r\n",
+    "        // into their inventory, and the chest stays available to players who have not looted it yet.\r\n",
+    "        if (WSCoop::InstancedLoot() && WSCoopLoot::HandleChest(this, LootComponent, Context))\r\n",
+    "            return;\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}

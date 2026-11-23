@@ -1,0 +1,20 @@
+{
+ "path": "Gameplay/Quest/Effects/ObjectiveEffect_GrantKeyItem.as",
+ "vanilla": "1AEE78B4C806F73E2196699F3384EE9A80AE43F81939FDEFDE6C194FF791536C",
+ "patched": "8AF015AE765910AC323B18D898742FCD03FDFF504A8675735DB3E82D491AE80F",
+ "hunks": [
+  {
+   "at": 25,
+   "remove": [
+    "        APlayerCharacter Player = Cast<APlayerCharacter>(InOwner);\r\n",
+    "        if (Player != nullptr && !Player.IsLocallyControlled())\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] Key items are world-wide: grant them exactly once per world, on the first completion,\r\n",
+    "        // by whichever player completes it (vanilla only granted on the local host, so a hostless\r\n",
+    "        // dedicated server never granted quest key items at all).\r\n",
+    "        if (!WSCoopQuests::IsFirstWorldCompletion())\r\n"
+   ]
+  }
+ ]
+}

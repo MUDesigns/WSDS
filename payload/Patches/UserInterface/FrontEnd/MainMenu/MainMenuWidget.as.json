@@ -1,0 +1,29 @@
+{
+ "path": "UserInterface/FrontEnd/MainMenu/MainMenuWidget.as",
+ "vanilla": "C469E4BDF9528357440EAA3A104F73380F22413121ADB6A3F833509C2383E2C1",
+ "patched": "B20FD37495296991E4CF936F41E7901E8413C42B8BA82A3A6B174372BB96EEBA",
+ "hunks": [
+  {
+   "at": 81,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] \"Join Dedicated Server\" entry (reuses the hidden dev Join button slot).\r\n",
+    "        WSMenu::SetupMainMenu(this, Button_JoinGameDev, StartGameWidgetClass);\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 83,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "        // [WSCoop] Joining a direct-IP dedicated server: stay out of EOS so the server accepts us.\r\n",
+    "        if (!WSDS::Param(\"WSConnect\", \"\").IsEmpty())\r\n",
+    "        {\r\n",
+    "            ApplyLoginResult(true);\r\n",
+    "            return;\r\n",
+    "        }\r\n"
+   ]
+  }
+ ]
+}

@@ -78,6 +78,11 @@ const SCHEMA = [
     { k: "AutoRestartOnCrash", label: "Restart automatically after a crash", type: "toggle" },
     { k: "StartServerOnLaunch", label: "Start the server when WSDS opens", type: "toggle" },
   ]},
+  { section: "Updates", step: null, fields: [
+    { k: "AutoUpdate.Enabled", label: "Keep WSDS and the mod up to date", type: "toggle", help: "Checks the WSDS releases on GitHub. The background service installs new versions by itself." },
+    { k: "AutoUpdate.OnlyWhenEmpty", label: "Only update while nobody is online", type: "toggle", help: "Otherwise players are disconnected for a minute while the server updates." },
+    { k: "AutoUpdate.CheckHours", label: "Check every (hours)", type: "number", min: 1, max: 168 },
+  ], extra: () => `<div class="field"><span class="lbl">Version</span><div class="row gap"><span id="updState" class="muted">WSDS ${esc(updateState.current || "")}</span><button class="btn small dark" id="updCheck">Check now</button><button class="btn small" id="updApply" style="display:none">Update now</button></div></div>` },
   { section: "Remote Control", step: null, fields: [
     { k: "RemoteControl.Enabled", label: "Allow remote control of this server", type: "toggle", help: "Lets WSDS on another PC manage this server (needs the password below)." },
     { k: "RemoteControl.Port", label: "Remote control port (TCP)", type: "number", min: 1, max: 65535 },
@@ -130,6 +135,9 @@ function renderSettings() {
   $("#settingsForm").innerHTML = SCHEMA.map((sec) => `<h3>${sec.section}</h3><div class="cols">${sec.fields.map(fieldHtml).join("")}${sec.extra ? sec.extra() : ""}</div>`).join("") + remotesSection();
   $$("[data-rmremote]").forEach((b) => (b.onclick = async () => { await invoke("remove_remote", { id: b.dataset.rmremote }); await refreshRemotes(); renderSettings(); }));
   const add = $("#addRemoteBtn"); if (add) add.onclick = addRemoteDialog;
+  $("#updCheck").onclick = () => refreshUpdate(true);
+  $("#updApply").onclick = applyUpdate;
+  showUpdate();
 }
 async function saveSettings() {
   SCHEMA.forEach((s) => readFields(s.fields));
@@ -408,6 +416,7 @@ async function loadConnection() {
     if (conn.mode !== "local") { conn = { mode: "local", name: "This PC" }; await refreshRemotes(); return loadConnection(); }
   }
   renderSettings(); renderPlayers(); renderBans(); refreshHeader();
+  refreshUpdate(false);
 }
 async function onPickServer() {
   const v = $("#serverPick").value;
@@ -458,6 +467,30 @@ function remotesSection() {
     <div class="row gap" style="margin-top:12px"><button class="btn small" id="addRemoteBtn">Add remote server</button></div>`;
 }
 
+// ---------------------------------------------------------------- WSDS updates
+let updateState = { current: "", info: null, busy: false };
+function showUpdate() {
+  const i = updateState.info, avail = i && i.available;
+  const text = updateState.busy ? "Updating..." : avail ? `WSDS ${updateState.current} - version ${i.version} is available` : i ? `WSDS ${updateState.current} - up to date` : `WSDS ${updateState.current}`;
+  if ($("#updState")) $("#updState").textContent = text;
+  if ($("#updApply")) $("#updApply").style.display = avail && !updateState.busy ? "" : "none";
+  const b = $("#bWsdsUpdate");
+  if (b) { b.style.display = avail && !updateState.busy ? "" : "none"; if (avail) b.textContent = `Update to ${i.version}`; }
+}
+async function refreshUpdate(force) {
+  try {
+    if (force) { updateState.info = await api("update_check"); if (!updateState.current) updateState.current = updateState.info.current; }
+    else { const r = await api("update_status"); updateState = { current: r.current, info: r.info, busy: r.busy }; }
+    showUpdate();
+    if (force) toast(updateState.info.available ? `Version ${updateState.info.version} is available.` : "WSDS is up to date.");
+  } catch (e) { if (force) toast(`Update check failed: ${e}`, true); }
+}
+function applyUpdate() {
+  const v = updateState.info?.version || "";
+  modal(`Update to ${esc(v)}?`, `<p>The world is saved and the server stops for about a minute while WSDS and the Co-op Overhaul mod are updated, then everything restarts by itself.</p>${players.length ? `<p class="gold">${players.length} player(s) online will be disconnected.</p>` : ""}`,
+    [["Update now", "", async () => { await call("update_apply"); updateState.busy = true; showUpdate(); activity(`Updating to ${v}`); }], ["Cancel", "dark"]]);
+}
+
 async function init() {
   await loadFonts();
   await refreshRemotes();
@@ -475,6 +508,8 @@ async function init() {
   $("#wClose").onclick = () => win.close();
   $("#bStart").onclick = startServer;
   setInterval(pollRemote, 1000);
+  setInterval(() => refreshUpdate(false), 5 * 60 * 1000);
+  $("#bWsdsUpdate").onclick = applyUpdate;
   $("#bStop").onclick = () => call("server_stop").then(() => activity("Server stopping"));
   $("#bRestart").onclick = () => call("server_restart").then(() => activity("Server restarting"));
   $("#bSave").onclick = () => call("server_save").then(() => activity("Saving world", "ok"));

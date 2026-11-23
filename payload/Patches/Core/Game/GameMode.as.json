@@ -1,0 +1,57 @@
+{
+ "path": "Core/Game/GameMode.as",
+ "vanilla": "5498F36C444AC40EB00BFBF3A1AB1450A4A995978DD51E2B56515659B1D606EF",
+ "patched": "62B56D3D659D110ED7875171CCEC6AE90D819317086CA2CE044E1F00E47D1A35",
+ "hunks": [
+  {
+   "at": 51,
+   "remove": [],
+   "add": [
+    "        WSIdentity::Attach(NewPlayer); // [WSCoop] direct-IP clients report a stable id\r\n"
+   ]
+  },
+  {
+   "at": 63,
+   "remove": [],
+   "add": [
+    "            // [WSCoop] Headless host: the process's own local controller stays a pawnless spectator\r\n",
+    "            // (no character creation, no save registration).\r\n",
+    "            if (NewPlayer != nullptr && NewPlayer.IsLocalController() && WSDS::IsHeadlessHost())\r\n",
+    "            {\r\n",
+    "                WSDS::Info(\"Headless host local controller kept as spectator\");\r\n",
+    "                NewPlayers.RemoveAtSwap(Idx);\r\n",
+    "                continue;\r\n",
+    "            }\r\n",
+    "            // [WSCoop] Anonymous (direct-IP) clients must report their identity before we can decide\r\n",
+    "            // between loading their character and character creation. Wait for it (first joins can spend\r\n",
+    "            // minutes compiling shaders before the client finishes loading and reports).\r\n",
+    "            if (NewPlayer != nullptr && WSIdentity::IsAnonymous(NewPlayer))\r\n",
+    "            {\r\n",
+    "                UWSIdentityComponent IdComp = WSIdentity::GetComponent(NewPlayer);\r\n",
+    "                if (IdComp != nullptr && !IdComp.bReceived)\r\n",
+    "                {\r\n",
+    "                    IdComp.WaitedSeconds += DeltaSeconds;\r\n",
+    "                    if (IdComp.WaitedSeconds < 300.0)\r\n",
+    "                        continue;\r\n",
+    "                    WSDS::Info(f\"WARNING: no identity from '{NewPlayer.PlayerState.GetPlayerName()}' after 300s; using fallback save name\");\r\n",
+    "                }\r\n",
+    "            }\r\n"
+   ]
+  },
+  {
+   "at": 73,
+   "remove": [
+    "                    const bool bEnterCharacterCreation = bForceCharacterCreation || (SaveSubsystem.IsEnabled() && !SaveSubsystem.HasPlayerSave(NewPlayer));\r\n"
+   ],
+   "add": [
+    "                    bool bEnterCharacterCreation = bForceCharacterCreation || (SaveSubsystem.IsEnabled() && !SaveSubsystem.HasPlayerSave(NewPlayer));\r\n",
+    "                    // [WSCoop] Unattended testing: spawn new players with a default character.\r\n",
+    "                    if (bEnterCharacterCreation && System::ParseParam(System::GetCommandLine(), \"WSAutoCreateCharacters\"))\r\n",
+    "                    {\r\n",
+    "                        WSDS::Info(f\"Auto-creating default character for '{NewPlayer.PlayerState.GetPlayerName()}' (-WSAutoCreateCharacters)\");\r\n",
+    "                        bEnterCharacterCreation = false;\r\n",
+    "                    }\r\n"
+   ]
+  }
+ ]
+}

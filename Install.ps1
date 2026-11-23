@@ -1,44 +1,81 @@
-# Installs (or re-installs after a game update) the Witchspire Dedicated Server + Co-op Overhaul mod.
+# Installs (or re-installs after a game or mod update) the Witchspire Dedicated Server + Co-op Overhaul mod.
 # Every player and the server machine need the same mod version: gameplay scripts must match exactly.
+#
+# payload\Script\Mods\...   the mod's own scripts (copied as they are)
+# payload\Patches\*.json    exact line patches for the game scripts the mod changes; each is applied to the
+#                           original game file and the result is checked against the expected SHA-256.
 param([switch]$Force)
 $ErrorActionPreference = 'Stop'
 $mod = $PSScriptRoot
-$game = Join-Path (Split-Path -Parent $mod) 'Hercules\Script'
+$gameRoot = Split-Path -Parent $mod
+$game = Join-Path $gameRoot 'Hercules\Script'
 $payload = Join-Path $mod 'payload'
 $backup = Join-Path $mod 'backup\Script'
-if (Get-Process -Name 'Hercules-Win64-Shipping' -ErrorAction SilentlyContinue) {
+
+# Only processes started from THIS Witchspire folder (game or its dedicated server) block the install.
+$running = @(Get-Process -Name 'Hercules-Win64-Shipping' -ErrorAction SilentlyContinue | Where-Object {
+    -not $_.Path -or $_.Path.StartsWith($gameRoot, [StringComparison]::OrdinalIgnoreCase)
+})
+if ($running.Count -gt 0) {
     throw 'Witchspire (game or dedicated server) is running. Close it first, then run this again.'
 }
 if (-not (Test-Path (Join-Path $game 'Core'))) { throw "Witchspire scripts not found at $game. Put the WitchspireCoopMod folder inside the Witchspire install folder." }
 
-function Get-Sha256([string]$path) {
+$Latin1 = [Text.Encoding]::GetEncoding(28591)   # byte-for-byte text
+
+function Get-Sha256Bytes([byte[]]$bytes) {
     # .NET directly: Get-FileHash is unavailable when Windows PowerShell inherits a PowerShell 7 module path.
     $sha = [Security.Cryptography.SHA256]::Create()
-    $fs = [IO.File]::OpenRead($path)
-    try { return ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-', '') } finally { $fs.Dispose(); $sha.Dispose() }
+    try { return ([BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-', '') } finally { $sha.Dispose() }
+}
+function Get-Sha256([string]$path) { return Get-Sha256Bytes ([IO.File]::ReadAllBytes($path)) }
+
+# Applies a patch to the original file's bytes; returns the patched bytes (verified) or throws.
+function Build-Patched($patch, [string]$originalPath) {
+    $text = $Latin1.GetString([IO.File]::ReadAllBytes($originalPath))
+    $lines = @([regex]::Matches($text, '[^\n]*\n|[^\n]+') | ForEach-Object { $_.Value })
+    $out = New-Object System.Text.StringBuilder
+    $pos = 0
+    foreach ($h in @($patch.hunks)) {
+        $at = [int]$h.at
+        for ($i = $pos; $i -lt $at; $i++) { [void]$out.Append($lines[$i]) }
+        $remove = @($h.remove)
+        for ($k = 0; $k -lt $remove.Count; $k++) {
+            if ($lines[$at + $k] -cne $remove[$k]) { throw "Patch for $($patch.path) does not match the game file." }
+        }
+        foreach ($line in @($h.add)) { [void]$out.Append($line) }
+        $pos = $at + $remove.Count
+    }
+    for ($i = $pos; $i -lt $lines.Count; $i++) { [void]$out.Append($lines[$i]) }
+    $bytes = $Latin1.GetBytes($out.ToString())
+    if ((Get-Sha256Bytes $bytes) -ne $patch.patched) { throw "Patch for $($patch.path) produced an unexpected result." }
+    return , $bytes
 }
 
 # 1. Check every game script the mod patches BEFORE changing anything.
-# Assign first: Windows PowerShell 5.1 emits a JSON array as ONE pipeline object.
-$manifest = Get-Content -Raw (Join-Path $payload 'manifest.json') | ConvertFrom-Json
+$patchDir = Join-Path $payload 'Patches'
 $plan = @()
 $mismatch = 0
-foreach ($e in @($manifest)) {
-    $rel = $e.Path -replace '/', '\'
+foreach ($file in Get-ChildItem -Recurse -File -Filter '*.json' $patchDir) {
+    $patch = Get-Content -Raw $file.FullName | ConvertFrom-Json
+    $rel = $patch.path -replace '/', '\'
     $live = Join-Path $game $rel
-    $hash = if (Test-Path $live) { Get-Sha256 $live } else { '' }
     $bk = Join-Path $backup $rel
-    $backupIsVanilla = (Test-Path $bk) -and ((Get-Sha256 $bk) -eq $e.VanillaSha256)
-    if ($hash -eq $e.PatchedSha256) { $plan += @{ Rel = $rel; Action = 'current' } }
-    elseif ($hash -eq $e.VanillaSha256) { $plan += @{ Rel = $rel; Action = 'patch' } }
+    $hash = if (Test-Path $live) { Get-Sha256 $live } else { '' }
+    $backupIsVanilla = (Test-Path $bk) -and ((Get-Sha256 $bk) -eq $patch.vanilla)
+    if ($hash -eq $patch.patched) { $plan += @{ Rel = $rel; Action = 'current'; Patch = $patch } }
+    elseif ($hash -eq $patch.vanilla) { $plan += @{ Rel = $rel; Action = 'patch'; Patch = $patch; Source = $live } }
     # Patched by an earlier version of this mod: the saved original still matches this game version.
-    elseif ($backupIsVanilla) { $plan += @{ Rel = $rel; Action = 'upgrade' } }
-    elseif ($Force) { $plan += @{ Rel = $rel; Action = 'patch' } }
+    elseif ($backupIsVanilla) { $plan += @{ Rel = $rel; Action = 'upgrade'; Patch = $patch; Source = $bk } }
     else { Write-Host "  CHANGED BY GAME UPDATE  $rel" -ForegroundColor Yellow; $mismatch++ }
 }
-if ($mismatch -gt 0) {
+if ($mismatch -gt 0 -and -not $Force) {
     Write-Host "$mismatch game file(s) differ from the version this mod was built for. Nothing was changed - an updated mod version is needed." -ForegroundColor Red
     exit 1
+}
+# Build every patched file in memory first, so a bad patch changes nothing.
+foreach ($p in $plan) {
+    if ($p.Action -ne 'current') { $p.Bytes = Build-Patched $p.Patch $p.Source }
 }
 
 # 2. New mod scripts.
@@ -61,18 +98,17 @@ foreach ($sub in Get-ChildItem (Join-Path $payload 'Script\Mods') -Directory) {
 }
 Write-Host 'Mod scripts installed.' -ForegroundColor Green
 
-# 3. Patched game scripts (originals are backed up first).
+# 3. Patched game scripts (an unmodified original is backed up first; an upgrade keeps the saved original).
 foreach ($p in $plan) {
     $rel = $p.Rel
     if ($p.Action -eq 'current') { Write-Host "  up to date   $rel"; continue }
     $live = Join-Path $game $rel
-    $bk = Join-Path $backup $rel
-    # Only an unmodified game file is backed up; an upgrade keeps the original already saved.
     if ($p.Action -eq 'patch') {
+        $bk = Join-Path $backup $rel
         New-Item -ItemType Directory -Force (Split-Path -Parent $bk) | Out-Null
         Copy-Item $live $bk -Force
     }
-    Copy-Item (Join-Path $payload "Patched\$rel") $live -Force
+    [IO.File]::WriteAllBytes($live, $p.Bytes)
     $verb = if ($p.Action -eq 'upgrade') { 'upgraded ' } else { 'patched  ' }
     Write-Host "  $verb   $rel" -ForegroundColor Green
 }

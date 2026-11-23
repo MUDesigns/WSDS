@@ -1,0 +1,54 @@
+{
+ "path": "Gameplay/Quest/ObjectiveComponent.as",
+ "vanilla": "FC2A7A465D9DC63531C7274E876C936E8B5B0FA410DBE55AE6291356046D0242",
+ "patched": "DC6E698AC3955A702ECA503C9E9E6DF9D18414C338E2E85EB3D68AD7EC36FFCC",
+ "hunks": [
+  {
+   "at": 188,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "        // [WSCoop] Retroactive credit for world milestones this player missed.\r\n",
+    "        WSCoopQuests::CatchUp(Cast<APlayerCharacter>(Owner));\r\n"
+   ]
+  },
+  {
+   "at": 724,
+   "remove": [],
+   "add": [
+    "        WSCoopQuests::BeginCompletion(ObjectiveTag); // [WSCoop] lets world-level effects fire once per world\r\n"
+   ]
+  },
+  {
+   "at": 726,
+   "remove": [],
+   "add": [
+    "        WSCoopQuests::EndCompletion();\r\n"
+   ]
+  },
+  {
+   "at": 744,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "        // [WSCoop] Record in the world and share with the rest of the coven.\r\n",
+    "        if (!bWasLoaded)\r\n",
+    "            WSCoopQuests::OnObjectiveCompleted(Cast<APlayerCharacter>(Owner), ObjectiveTag, CompletedObjective.bIsGlobal);\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop] Runs completion effects of an objective this player has without its effects (global\r\n",
+    "    // objectives are synced to everyone, but vanilla only runs their effects for the finisher).\r\n",
+    "    void WSApplyCompletionEffects(FGameplayTag ObjectiveTag)\r\n",
+    "    {\r\n",
+    "        if (!System::IsServer())\r\n",
+    "            return;\r\n",
+    "        UObjective Objective = GetObjectiveByTag(ObjectiveTag);\r\n",
+    "        if (Objective == nullptr)\r\n",
+    "            return;\r\n",
+    "        WSCoopQuests::BeginCompletion(ObjectiveTag);\r\n",
+    "        Objective.ActivateCompletionEffects(Owner, false);\r\n",
+    "        WSCoopQuests::EndCompletion();\r\n"
+   ]
+  }
+ ]
+}

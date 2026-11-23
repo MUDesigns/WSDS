@@ -1,0 +1,62 @@
+{
+ "path": "Gameplay/Progression/PlayerSkillsComponent.as",
+ "vanilla": "DE8E1F1C9D35628C8D7DBDC78E2A76794439F0853C258446F72F91AD5F17E111",
+ "patched": "CF5AD89B61886143501A25C0B143336EBAB4C2D74F66160053D9DE95EAFF7ED5",
+ "hunks": [
+  {
+   "at": 294,
+   "remove": [
+    "        const float XPToGrant = Amount * SkillTemplate.XPModifierFactor * TaskContext.PlayerSkillXPMod * CVar::Player::Skills::PlayerSkillsXPRate.Float;\r\n"
+   ],
+   "add": [
+    "        float XPToGrant = Amount * SkillTemplate.XPModifierFactor * TaskContext.PlayerSkillXPMod * CVar::Player::Skills::PlayerSkillsXPRate.Float;\r\n",
+    "        // [WSCoop] Coven synergy bonus, and share part of it with nearby coven members.\r\n",
+    "        XPToGrant *= WSCoopProgression::SkillXPMultiplier(Cast<APlayerCharacter>(Owner));\r\n",
+    "        WSCoopProgression::ShareSkillXP(Cast<APlayerCharacter>(Owner), SkillProgress.PlayerSkillTag, XPToGrant);\r\n"
+   ]
+  },
+  {
+   "at": 317,
+   "remove": [],
+   "add": [
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop] Skill XP shared by a nearby coven member (never re-shared).\r\n",
+    "    void WSGrantSharedXP(FGameplayTag SkillTag, float XP)\r\n",
+    "    {\r\n",
+    "        if (!System::IsServer() || XP <= 0)\r\n",
+    "            return;\r\n",
+    "\r\n",
+    "        for (int TaskID = 0; TaskID < ProgressionData.Num(); TaskID++)\r\n",
+    "        {\r\n",
+    "            if (ProgressionData[TaskID].PlayerSkillTag != SkillTag)\r\n",
+    "                continue;\r\n",
+    "\r\n",
+    "            FPlayerSkillProgress& SkillProgress = ProgressionData[TaskID];\r\n",
+    "            if (SkillProgress.Level >= MaxLevel)\r\n",
+    "                return;\r\n",
+    "\r\n",
+    "            const int PreviousLevel = SkillProgress.Level;\r\n",
+    "            const float PreviousPercent = SkillProgress.GetSkillPercent(SkillTemplates.LevelScalingFactor);\r\n",
+    "            SkillProgress.AddXP(XP, SkillTemplates.LevelScalingFactor, MaxLevel);\r\n",
+    "            const int NewLevel = SkillProgress.Level;\r\n",
+    "\r\n",
+    "            if (NewLevel > PreviousLevel)\r\n",
+    "                OnSkillLeveledUp(SkillProgress.PlayerSkillTag, PreviousLevel, NewLevel);\r\n",
+    "            if (NewLevel >= MaxLevel)\r\n",
+    "            {\r\n",
+    "                OnMaxLevelReached(SkillProgress.PlayerSkillTag, TaskID);\r\n",
+    "                return;\r\n",
+    "            }\r\n",
+    "\r\n",
+    "            const float UpdatedPercent = SkillProgress.GetSkillPercent(SkillTemplates.LevelScalingFactor);\r\n",
+    "            if (Game::GetLocalPlayer() == Owner)\r\n",
+    "                OnSkillUpdated.Broadcast(SkillProgress.PlayerSkillTag, SkillProgress, SkillTemplates, PreviousPercent, UpdatedPercent);\r\n",
+    "            else\r\n",
+    "                OnSkillUpdated_Client(SkillProgress, PreviousPercent, UpdatedPercent);\r\n",
+    "            return;\r\n",
+    "        }\r\n"
+   ]
+  }
+ ]
+}

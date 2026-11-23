@@ -1,0 +1,16 @@
+{
+ "path": "Gameplay/Quest/Effects/ObjectiveEffect_TriggerCorruption.as",
+ "vanilla": "7835C7DC22AD3BF8C4CC677964486B350A9F659278DFA2CD1D426F3E8E620EF2",
+ "patched": "E5E2351948A1132873494F81D8EE2A34876B4C1B26CE967070239CDD5DFE7F77",
+ "hunks": [
+  {
+   "at": 13,
+   "remove": [],
+   "add": [
+    "            return;\r\n",
+    "\r\n",
+    "        if (!WSCoopQuests::IsFirstWorldCompletion()) // [WSCoop] world event: once per world\r\n"
+   ]
+  }
+ ]
+}

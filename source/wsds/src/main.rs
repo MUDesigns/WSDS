@@ -72,6 +72,7 @@ fn default_config() -> Value {
         "ExtraArgs": "",
         "RemoteControl": { "Enabled": false, "Port": 7780, "Salt": "", "Key": "" },
         "SteamCmd": { "Path": "", "User": "" },
+        "AutoUpdate": { "Enabled": true, "CheckHours": 6, "OnlyWhenEmpty": true, "Repo": "MUDesigns/WSDS", "LastApplied": "" },
         "Gameplay": {
             "ExperienceMultiplier": 1.0,
             "FamiliarExperienceMultiplier": 0.8,
@@ -252,6 +253,8 @@ struct Inner {
     last_state: Option<Value>,
     generation: u64,
     nonces: HashMap<String, u64>,
+    update_info: Option<Value>,
+    update_busy: bool,
 }
 
 struct App {
@@ -616,6 +619,281 @@ fn update_game(sink: Sink, s: Shared) -> Result<(), String> {
     Ok(())
 }
 
+// ================================================================ self-update (GitHub releases)
+//
+// The latest GitHub release of AutoUpdate.Repo carries "WSDS-Server-Update-<version>.zip" (WSDS.exe, the
+// scripts and the mod payload - no game files) and "SHA256SUMS.txt". The background service checks every
+// AutoUpdate.CheckHours; when a newer version exists (and, with OnlyWhenEmpty, nobody is online) it
+// downloads and verifies the package, saves and stops the server, installs it, swaps its own exe and
+// restarts itself. The window only reports updates; "Update now" works from the window or remotely.
+
+fn version_parts(v: &str) -> Vec<u64> {
+    v.trim().trim_start_matches(['v', 'V']).split(['.', '-', '+']).take(3).map(|p| p.parse().unwrap_or(0)).collect()
+}
+
+fn is_newer(candidate: &str, current: &str) -> bool {
+    version_parts(candidate) > version_parts(current)
+}
+
+fn ps_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// Asks GitHub (or the WSDS_UPDATE_FEED test file) for the latest release.
+fn check_update(s: &Shared) -> Result<Value, String> {
+    let cfg = load_config(&s.paths);
+    let repo = cfg["AutoUpdate"]["Repo"].as_str().unwrap_or("MUDesigns/WSDS").to_string();
+    let script = match std::env::var("WSDS_UPDATE_FEED") {
+        Ok(feed) => format!("Get-Content -Raw '{}'", ps_quote(&feed)),
+        Err(_) => format!(
+            "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; (Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 -Headers @{{'User-Agent'='WSDS/{VERSION}'; 'Accept'='application/vnd.github+json'}} 'https://api.github.com/repos/{}/releases/latest').Content",
+            ps_quote(&repo)
+        ),
+    };
+    let out = powershell(&script).map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(format!("could not reach GitHub: {}", String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("").trim()));
+    }
+    let release: Value = serde_json::from_slice(&out.stdout).map_err(|e| format!("unexpected answer from GitHub: {e}"))?;
+    let version = release["tag_name"].as_str().unwrap_or("").trim_start_matches(['v', 'V']).to_string();
+    let mut zip = String::new();
+    let mut sums = String::new();
+    for a in release["assets"].as_array().cloned().unwrap_or_default() {
+        let name = a["name"].as_str().unwrap_or("");
+        let url = a["browser_download_url"].as_str().unwrap_or("").to_string();
+        if name.starts_with("WSDS-Server-Update-") && name.ends_with(".zip") {
+            zip = url;
+        } else if name == "SHA256SUMS.txt" {
+            sums = url;
+        }
+    }
+    let last = cfg["AutoUpdate"]["LastApplied"].as_str().unwrap_or("").to_string();
+    let available = !version.is_empty() && !zip.is_empty() && !sums.is_empty() && is_newer(&version, VERSION) && version != last;
+    let info = json!({
+        "current": VERSION, "version": version, "available": available, "zip": zip, "sums": sums,
+        "notes": release["body"].as_str().unwrap_or(""), "url": release["html_url"].as_str().unwrap_or(""),
+        "checked": now_secs(),
+    });
+    s.inner.lock().unwrap().update_info = Some(info.clone());
+    Ok(info)
+}
+
+fn start_update(sink: Sink, s: Shared) -> Result<(), String> {
+    let info = s.inner.lock().unwrap().update_info.clone().ok_or("Check for updates first.")?;
+    if info["available"].as_bool() != Some(true) {
+        return Err(format!("WSDS {VERSION} is up to date."));
+    }
+    {
+        let mut inner = s.inner.lock().unwrap();
+        if inner.update_busy {
+            return Err("An update is already running.".into());
+        }
+        inner.update_busy = true;
+    }
+    thread::spawn(move || {
+        if let Err(e) = apply_update(&sink, &s, &info) {
+            info_line(&sink, &s, &format!("Update failed: {e}"));
+            s.inner.lock().unwrap().update_busy = false;
+            // Do not leave the world offline because of a failed update.
+            if s.inner.lock().unwrap().child.is_none() {
+                set_status(&sink, &s, "stopped");
+            }
+            if s.inner.lock().unwrap().child.is_none() && s.headless {
+                let _ = start_server(sink.clone(), s.clone());
+            }
+        }
+    });
+    Ok(())
+}
+
+fn info_line(sink: &Sink, s: &Shared, msg: &str) {
+    info(sink, s, msg);
+}
+
+fn apply_update(sink: &Sink, s: &Shared, info_v: &Value) -> Result<(), String> {
+    let version = info_v["version"].as_str().unwrap_or("").to_string();
+    let zip_url = info_v["zip"].as_str().unwrap_or("").to_string();
+    let sums_url = info_v["sums"].as_str().unwrap_or("").to_string();
+    let work = std::env::temp_dir().join(format!("wsds-update-{version}"));
+    let _ = fs::remove_dir_all(&work);
+    fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let zip_name = zip_url.rsplit(['/', '\\']).next().unwrap_or("update.zip").to_string();
+
+    info(sink, s, &format!("Downloading WSDS {version} ({zip_name})..."));
+    let fetch = |url: &str, dest: &Path| -> String {
+        if url.starts_with("http://") || url.starts_with("https://") {
+            format!("Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Headers @{{'User-Agent'='WSDS/{VERSION}'}} '{}' -OutFile '{}'", ps_quote(url), ps_quote(&dest.to_string_lossy()))
+        } else {
+            format!("Copy-Item -LiteralPath '{}' -Destination '{}' -Force", ps_quote(url), ps_quote(&dest.to_string_lossy()))
+        }
+    };
+    let zip_path = work.join(&zip_name);
+    let sums_path = work.join("SHA256SUMS.txt");
+    let extract = work.join("files");
+    let script = format!(
+        "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol='Tls12';\
+         {}; {};\
+         $sha = [Security.Cryptography.SHA256]::Create(); $fs = [IO.File]::OpenRead('{zip}'); $hash = ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-','').ToLower(); $fs.Dispose();\
+         $line = Get-Content '{sums}' | Where-Object {{ $_ -match [regex]::Escape('{name}') }} | Select-Object -First 1;\
+         if (-not $line) {{ throw 'the update is not listed in SHA256SUMS.txt' }};\
+         $expected = ($line -split '\\s+')[0].ToLower();\
+         if ($expected -ne $hash) {{ throw \"checksum mismatch (expected $expected, got $hash)\" }};\
+         Expand-Archive -LiteralPath '{zip}' -DestinationPath '{ext}' -Force;\
+         Write-Output \"VERIFIED $hash\"",
+        fetch(&zip_url, &zip_path),
+        fetch(&sums_url, &sums_path),
+        zip = ps_quote(&zip_path.to_string_lossy()),
+        sums = ps_quote(&sums_path.to_string_lossy()),
+        name = ps_quote(&zip_name),
+        ext = ps_quote(&extract.to_string_lossy()),
+    );
+    let out = powershell(&script).map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    if !out.status.success() || !stdout.contains("VERIFIED") {
+        return Err(format!("download/verification failed: {}", String::from_utf8_lossy(&out.stderr).lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim()));
+    }
+    info(sink, s, &format!("Package verified (SHA-256 {}).", stdout.trim().trim_start_matches("VERIFIED ").chars().take(16).collect::<String>()));
+    let package = extract.join("WitchspireCoopMod");
+    if !package.join("Install.ps1").exists() {
+        return Err("the update package does not contain WitchspireCoopMod\\Install.ps1".into());
+    }
+
+    // Stop the server (saves the world and every player).
+    let was_running = s.inner.lock().unwrap().child.is_some();
+    if was_running {
+        info(sink, s, "Saving the world and stopping the server for the update...");
+        let _ = request_stop(sink, s);
+        if !wait_stopped(s, 150) {
+            return Err("the server did not stop".into());
+        }
+    }
+    set_status(sink, s, "updating");
+
+    // Copy everything except settings, world data and WSDS.exe (swapped below).
+    let root = s.paths.root.clone();
+    let copy = format!(
+        "Remove-Item -Recurse -Force -LiteralPath (Join-Path '{1}' 'payload') -ErrorAction SilentlyContinue; robocopy '{0}' '{1}' /E /XF ServerConfig.json WSDS.exe /XD ServerData ServerInstall backup /NFL /NDL /NJH /NJS /NP | Out-Null; if ($LASTEXITCODE -ge 8) {{ throw \"robocopy failed ($LASTEXITCODE)\" }}; exit 0",
+        ps_quote(&package.to_string_lossy()),
+        ps_quote(&root.to_string_lossy())
+    );
+    let out = powershell(&copy).map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(format!("copying the update failed (exit {:?}): {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    info(sink, s, "Files updated. Applying the Co-op Overhaul mod...");
+    let out = Command::new("powershell")
+        .env_remove("PSModulePath")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &root.join("Install.ps1").to_string_lossy()])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| e.to_string())?;
+    for line in String::from_utf8_lossy(&out.stdout).lines().chain(String::from_utf8_lossy(&out.stderr).lines()) {
+        let l = line.trim();
+        if !l.is_empty() && !l.starts_with("up to date") {
+            info(sink, s, l);
+        }
+    }
+    let mod_ok = out.status.success();
+
+    // Never apply the same version twice, even if something below fails.
+    let mut cfg = load_config(&s.paths);
+    cfg["AutoUpdate"]["LastApplied"] = json!(version);
+    let _ = write_config(&s.paths, &cfg);
+
+    // Swap our own executable: a running exe can be renamed, then the new one takes its name.
+    let new_exe = package.join("WSDS.exe");
+    let current = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut swapped = false;
+    if new_exe.exists() {
+        let old = current.with_file_name("WSDS.old.exe");
+        let _ = fs::remove_file(&old);
+        if fs::rename(&current, &old).is_ok() {
+            if fs::copy(&new_exe, &current).is_ok() {
+                swapped = true;
+            } else {
+                let _ = fs::rename(&old, &current);
+            }
+        }
+    }
+    if !mod_ok {
+        info(sink, s, "The mod could not be applied to this game version - the server keeps running the previous mod files. A game update through SteamCMD may be needed.");
+    }
+    if swapped {
+        info(sink, s, &format!("WSDS {version} installed - restarting WSDS..."));
+        thread::sleep(Duration::from_secs(3)); // let the service log catch up
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let mut cmd = Command::new(&current);
+        cmd.args(&args).current_dir(&root);
+        if s.headless {
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        cmd.spawn().map_err(|e| format!("could not restart WSDS: {e}"))?;
+        thread::sleep(Duration::from_millis(500));
+        std::process::exit(0);
+    }
+    info(sink, s, "Update installed (WSDS itself was not replaced).");
+    s.inner.lock().unwrap().update_busy = false;
+    set_status(sink, s, "stopped");
+    if was_running || s.headless {
+        let _ = start_server(sink.clone(), s.clone());
+    }
+    Ok(())
+}
+
+fn players_online(s: &Shared) -> usize {
+    let inner = s.inner.lock().unwrap();
+    if inner.child.is_none() {
+        return 0;
+    }
+    inner.last_state.as_ref().and_then(|st| st["players"].as_array().map(|a| a.len())).unwrap_or(0)
+}
+
+/// Background checks. The service installs updates by itself; the window only reports them.
+fn update_loop(sink: Sink, s: Shared) {
+    // Clean up after a previous self-update.
+    if let Ok(cur) = std::env::current_exe() {
+        let old = cur.with_file_name("WSDS.old.exe");
+        for _ in 0..10 {
+            if !old.exists() || fs::remove_file(&old).is_ok() {
+                break;
+            }
+            thread::sleep(Duration::from_secs(2));
+        }
+    }
+    thread::sleep(Duration::from_secs(90));
+    let mut announced = String::new();
+    loop {
+        let cfg = load_config(&s.paths);
+        let au = &cfg["AutoUpdate"];
+        let hours = au["CheckHours"].as_f64().unwrap_or(6.0).clamp(0.25, 168.0);
+        if au["Enabled"].as_bool().unwrap_or(true) {
+            match check_update(&s) {
+                Ok(info_v) if info_v["available"].as_bool() == Some(true) => {
+                    let v = info_v["version"].as_str().unwrap_or("").to_string();
+                    if announced != v {
+                        info(&sink, &s, &format!("WSDS {v} is available (this is {VERSION})."));
+                        announced = v.clone();
+                    }
+                    if s.headless {
+                        let only_empty = au["OnlyWhenEmpty"].as_bool().unwrap_or(true);
+                        // Wait for an empty server (re-checking every minute), then update.
+                        loop {
+                            if !only_empty || players_online(&s) == 0 {
+                                let _ = start_update(sink.clone(), s.clone());
+                                break;
+                            }
+                            thread::sleep(Duration::from_secs(60));
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => info(&sink, &s, &format!("Update check failed: {e}")),
+            }
+        }
+        thread::sleep(Duration::from_secs((hours * 3600.0) as u64));
+    }
+}
+
 // ================================================================ log tail & parsing
 
 fn tail_log(sink: Sink, s: Shared, path: PathBuf, gen: u64) {
@@ -893,6 +1171,17 @@ fn op(sink: &Sink, s: &Shared, name: &str, args: &Value) -> Result<Value, String
             Ok(json!(true))
         }
         "update_game" => update_game(sink.clone(), s.clone()).map(|_| json!(true)),
+        "update_status" => {
+            let inner = s.inner.lock().unwrap();
+            Ok(json!({ "current": VERSION, "info": inner.update_info.clone(), "busy": inner.update_busy, "service": s.headless }))
+        }
+        "update_check" => check_update(s),
+        "update_apply" => {
+            if s.inner.lock().unwrap().update_info.is_none() {
+                check_update(s)?;
+            }
+            start_update(sink.clone(), s.clone()).map(|_| json!(true))
+        }
         "admin" => {
             let c = args["command"].as_str().unwrap_or("").trim().to_string();
             if c.is_empty() {
@@ -1082,7 +1371,17 @@ fn start_control_server(sink: Sink, s: Shared) {
         return;
     }
     let port = cfg["RemoteControl"]["Port"].as_u64().unwrap_or(7780);
-    thread::spawn(move || match TcpListener::bind(("0.0.0.0", port as u16)) {
+    thread::spawn(move || {
+        // Retry for a while: right after a self-update the previous WSDS may still hold the port.
+        let mut bound = TcpListener::bind(("0.0.0.0", port as u16));
+        for _ in 0..30 {
+            if bound.is_ok() {
+                break;
+            }
+            thread::sleep(Duration::from_secs(2));
+            bound = TcpListener::bind(("0.0.0.0", port as u16));
+        }
+        match bound {
         Ok(listener) => {
             info(&sink, &s, &format!("Remote control listening on TCP port {port}"));
             for stream in listener.incoming().flatten() {
@@ -1091,6 +1390,7 @@ fn start_control_server(sink: Sink, s: Shared) {
             }
         }
         Err(e) => info(&sink, &s, &format!("Remote control could not listen on port {port}: {e}")),
+        }
     });
 }
 
@@ -1293,6 +1593,10 @@ fn run_headless(shared: Shared) {
         thread::spawn(move || command_pump(sink, s));
     }
     start_control_server(sink.clone(), shared.clone());
+    {
+        let (sink, s) = (sink.clone(), shared.clone());
+        thread::spawn(move || update_loop(sink, s));
+    }
     let _ = start_server(sink.clone(), shared.clone());
     // Mirror WSDS messages to a file so problems are visible without a window.
     let cfg = load_config(&shared.paths);
@@ -1367,6 +1671,10 @@ fn main() {
                 && TcpStream::connect_timeout(&format!("127.0.0.1:{}", cfg["RemoteControl"]["Port"].as_u64().unwrap_or(7780)).parse().unwrap(), Duration::from_millis(300)).is_ok();
             if !service_owns_port {
                 start_control_server(sink.clone(), shared.clone());
+                {
+                    let (sink, s) = (sink.clone(), shared.clone());
+                    thread::spawn(move || update_loop(sink, s));
+                }
                 if cfg["SetupComplete"].as_bool().unwrap_or(false) && cfg["StartServerOnLaunch"].as_bool().unwrap_or(false) {
                     let _ = start_server(sink, shared.clone());
                 }

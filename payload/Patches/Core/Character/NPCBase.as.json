@@ -1,0 +1,18 @@
+{
+ "path": "Core/Character/NPCBase.as",
+ "vanilla": "CD151135E662D02DDA553FB0B522642E24BECBFCCB7584C1C82794C6B465E155",
+ "patched": "FD8C4FA5E1F3A20098F2494B996336A68047F7ACA2DA4DD474D473BE7B291869",
+ "hunks": [
+  {
+   "at": 301,
+   "remove": [
+    "        LootComp.DropLoot(LuckModifier);\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] Instanced drops: every participating player nearby gets their own roll.\r\n",
+    "        if (!(System::IsServer() && WSCoop::InstancedLoot() && WSCoopLoot::GrantToNearbyPlayers(this, LootComp, \"kill\")))\r\n",
+    "            LootComp.DropLoot(LuckModifier);\r\n"
+   ]
+  }
+ ]
+}

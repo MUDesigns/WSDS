@@ -69,10 +69,22 @@ fn is_game_dir(p: &Path) -> bool {
     p.join("Hercules").join("Binaries").join("Win64").join("Hercules-Win64-Shipping.exe").exists()
 }
 
-fn game_running() -> bool {
-    run_hidden("tasklist", &["/FI", "IMAGENAME eq Hercules-Win64-Shipping.exe"])
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("Hercules-Win64-Shipping"))
-        .unwrap_or(false)
+/// Witchspire processes (game or dedicated server) started from this game folder. Copies of the game
+/// elsewhere on the PC do not count.
+fn running_pids(game: &Path) -> Vec<u32> {
+    let mut root = game.display().to_string().replace('/', "\\");
+    if !root.ends_with('\\') {
+        root.push('\\');
+    }
+    let script = format!(
+        "Get-Process Hercules-Win64-Shipping -ErrorAction SilentlyContinue | Where-Object {{ -not $_.Path -or $_.Path.StartsWith('{}', [StringComparison]::OrdinalIgnoreCase) }} | ForEach-Object {{ $_.Id }}",
+        root.replace('\'', "''")
+    );
+    ps(&script).map(|o| o.lines().filter_map(|l| l.trim().parse().ok()).collect()).unwrap_or_default()
+}
+
+fn game_running(game: &Path) -> bool {
+    !running_pids(game).is_empty()
 }
 
 fn b64(data: &[u8]) -> String {
@@ -176,7 +188,7 @@ fn check_game(path: String) -> Value {
     let p = PathBuf::from(&path);
     json!({
         "found": is_game_dir(&p),
-        "running": game_running(),
+        "running": game_running(&p),
         "installed": p.join("WitchspireCoopMod").join("Install.ps1").exists(),
     })
 }
@@ -462,11 +474,13 @@ fn do_install(app: &AppHandle, opts: &Value) -> Result<Value, String> {
         // Updating a running server: stop the service, then let the game server save and exit.
         stop_running_server(app, &mod_root);
     }
-    if game_running() {
+    if game_running(&game) {
         return Err("Witchspire (or a Witchspire server) is running. Close it and try again.".into());
     }
 
     step(app, "Copying files");
+    // A new version brings its complete payload: drop the old one so removed patches do not linger.
+    let _ = fs::remove_dir_all(mod_root.join("payload"));
     let n = extract_payload(&game, None)?;
     progress(app, &format!("{n} files copied to {}", mod_root.display()));
 
@@ -590,7 +604,7 @@ fn uninstall(app: AppHandle, path: String) -> Result<(), String> {
             if FLAVOR == "server" {
                 stop_running_server(&app, &mod_root);
             }
-            if game_running() {
+            if game_running(&game) {
                 return Err("Witchspire is running. Close it and try again.".into());
             }
             step(&app, "Restoring the original game files");
@@ -628,9 +642,10 @@ fn uninstall(app: AppHandle, path: String) -> Result<(), String> {
 /// Stops the WSDS background service and asks a running game server to save and exit (as WSDS does),
 /// forcing it only if it has not exited after two minutes.
 fn stop_running_server(app: &AppHandle, mod_root: &Path) {
+    let game = mod_root.parent().map(Path::to_path_buf).unwrap_or_default();
     let _ = ps("Stop-ScheduledTask -TaskName 'WSDS' -ErrorAction SilentlyContinue; Get-Process WSDS -ErrorAction SilentlyContinue | Stop-Process -Force");
     thread::sleep(Duration::from_secs(2));
-    if !game_running() {
+    if !game_running(&game) {
         return;
     }
     let cfg: Value = fs::read_to_string(mod_root.join("ServerConfig.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(json!({}));
@@ -641,14 +656,16 @@ fn stop_running_server(app: &AppHandle, mod_root: &Path) {
     let _ = fs::write(control.join("shutdown.request"), b"");
     step(app, "Saving the world and stopping the running server");
     for _ in 0..120 {
-        if !game_running() {
+        if !game_running(&game) {
             break;
         }
         thread::sleep(Duration::from_secs(1));
     }
-    if game_running() {
+    if game_running(&game) {
         progress(app, "The server did not stop within 2 minutes - forcing it to close.");
-        let _ = run_hidden("taskkill", &["/F", "/IM", "Hercules-Win64-Shipping.exe"]);
+        for pid in running_pids(&game) {
+            let _ = run_hidden("taskkill", &["/F", "/PID", &pid.to_string()]);
+        }
         thread::sleep(Duration::from_secs(2));
     } else {
         progress(app, "Server saved and stopped.");

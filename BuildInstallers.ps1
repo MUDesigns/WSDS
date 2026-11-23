@@ -62,5 +62,20 @@ try {
     Remove-Item Env:TAURI_CONFIG, Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
     Pop-Location
 }
+Step 'Release assets (GitHub)'
+# The server update package used by WSDS's updater: WSDS.exe, scripts and the mod payload (patches only -
+# no game files, no third-party tools; servers already have those from WSDS Setup).
+$version = ((Get-Content (Join-Path $src 'wsds\Cargo.toml') | Select-String '^version = "(.+)"').Matches[0].Groups[1].Value)
+$rel = Join-Path $dist 'github-release'
+if (Test-Path $rel) { Remove-Item -Recurse -Force $rel }
+New-Item -ItemType Directory -Force $rel | Out-Null
+Copy-Item $wsdsExe (Join-Path $rel "WSDS-$version.exe")
+New-Payload (Join-Path $rel "WSDS-Server-Update-$version.zip") @('Install.ps1', 'Uninstall.ps1', 'ServerInstall.ps1', 'StartServer.ps1', 'StartServer.bat', 'README.md', 'payload') @{ 'WSDS.exe' = $wsdsExe }
+Push-Location $rel
+try {
+    Get-ChildItem -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object { '{0} *{1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content -Encoding ascii 'SHA256SUMS.txt'
+} finally { Pop-Location }
+
 Step 'Done'
 Get-ChildItem $dist -Filter *.exe | ForEach-Object { '{0,-36} {1,6:N1} MB' -f $_.Name, ($_.Length / 1MB) }
+Get-ChildItem $rel | ForEach-Object { '  release: {0,-34} {1,8:N0} KB' -f $_.Name, ($_.Length / 1KB) }

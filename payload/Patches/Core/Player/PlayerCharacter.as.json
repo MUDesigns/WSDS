@@ -1,0 +1,15 @@
+{
+ "path": "Core/Player/PlayerCharacter.as",
+ "vanilla": "54A9937525CD3F70FB5FEDE3631A6BD4FE140A4DAC48E43BCD45B27F9EDCB53D",
+ "patched": "C678BE7956DFD8B4E7C34ADB470D298B0E0F4A1A03BC2E39E7CF0038E74F27D0",
+ "hunks": [
+  {
+   "at": 497,
+   "remove": [],
+   "add": [
+    "            return;\r\n",
+    "        if (!WSCoopPermissions::Check(this, \"level up hearths\")) // [WSCoop]\r\n"
+   ]
+  }
+ ]
+}

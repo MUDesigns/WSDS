@@ -1,0 +1,17 @@
+{
+ "path": "Gameplay/ExperienceShare/ExperienceShareSystem.as",
+ "vanilla": "6851E76CE8944718D12E06FE2B9BAB47870F94CF9E8E9A828B598F199606CAC9",
+ "patched": "FB1046C92CB0E20FE365C4B9ABE53C72025EB8C641CD7694DC3814617C646832",
+ "hunks": [
+  {
+   "at": 66,
+   "remove": [
+    "        const float PlayerExperience = ExperienceToGrant * ExpLevelDiffScalar;\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] catch-up scaling for lower-level players + coven synergy\r\n",
+    "        const float PlayerExperience = ExperienceToGrant * ExpLevelDiffScalar * WSCoopProgression::KillXPMultiplier(Player);\r\n"
+   ]
+  }
+ ]
+}
