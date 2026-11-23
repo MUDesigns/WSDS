@@ -1,0 +1,26 @@
+# ---- build output
+source/*/target/
+source/*/target-*/
+source/*/gen/
+source/installer/payload/
+dist/
+
+# ---- runtime data, logs and personal settings (may contain password hashes / player ids)
+ServerData/
+ServerInstall/
+_testdata/
+ServerConfig.json
+*.log
+*.bak
+
+# ---- not ours to redistribute: Witchspire's own files and proprietary libraries
+# Modified copies of the game's scripts and their originals (generated locally by BuildPackage.ps1)
+backup/
+payload/Patched/
+# Oodle (Epic Games) - copy it from Witchspire's Engine\Binaries\ThirdParty folder or another UE game
+tools/oo2core_*.dll
+# Third-party tools are downloaded, not committed (see tools/README.md)
+tools/*.exe
+# Game fonts are read from the player's own install at runtime
+source/fonts-dev/
+source/icons_preview.png

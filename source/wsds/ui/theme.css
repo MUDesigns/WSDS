@@ -1,0 +1,142 @@
+/* Witchspire-styled theme shared by WSDS and the installers.
+   Fonts (Griezly, Lato) are loaded at runtime from the player's own game install. */
+:root {
+  --bg-0: #0d0913;
+  --bg-1: #160f20;
+  --panel: rgba(24, 16, 34, 0.86);
+  --panel-solid: #1a1226;
+  --panel-2: rgba(36, 24, 52, 0.85);
+  --gold: #e8c478;
+  --gold-2: #c9a15a;
+  --gold-dim: #8e6d36;
+  --cream: #f3e9d2;
+  --text: #e9e1d2;
+  --muted: #a99db4;
+  --purple: #4b2a6e;
+  --purple-2: #321a4c;
+  --purple-hi: #6b3f99;
+  --red: #d24b4b;
+  --green: #7fd38a;
+  --amber: #f0b45a;
+  --radius: 4px;
+  --title-font: "Griezly", "PT Serif", Georgia, serif;
+  --body-font: "Lato", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background:
+    radial-gradient(1200px 600px at 75% -10%, rgba(120, 60, 170, 0.35), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(60, 120, 160, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  color: var(--text);
+  font-family: var(--body-font);
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+}
+::selection { background: rgba(232, 196, 120, 0.35); }
+
+/* ---------- title bar ---------- */
+.titlebar {
+  height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 0 0 14px;
+  background: linear-gradient(180deg, rgba(40, 26, 58, 0.95), rgba(22, 14, 32, 0.95));
+  border-bottom: 1px solid var(--gold-dim);
+  box-shadow: 0 1px 0 rgba(232, 196, 120, 0.15);
+}
+.titlebar .logo { width: 24px; height: 24px; }
+.titlebar .name { font-family: var(--title-font); color: var(--gold); font-size: 20px; letter-spacing: 0.5px; }
+.titlebar .sub { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.titlebar .drag { flex: 1; height: 100%; }
+.winbtn {
+  width: 46px; height: 40px; border: 0; background: transparent; color: var(--muted); font-size: 15px; cursor: pointer;
+}
+.winbtn:hover { background: rgba(255, 255, 255, 0.08); color: var(--cream); }
+.winbtn.close:hover { background: #a23a3a; color: #fff; }
+
+/* ---------- framed panel (gold border + corner diamonds, like the game's dialogs) ---------- */
+.frame {
+  position: relative; background: var(--panel); border: 1px solid var(--gold-2);
+  box-shadow: inset 0 0 0 3px rgba(13, 9, 19, 0.6), inset 0 0 0 4px rgba(201, 161, 90, 0.35), 0 10px 30px rgba(0, 0, 0, 0.45);
+  border-radius: 2px; padding: 22px 24px;
+}
+.frame::before, .frame::after, .frame > .c3, .frame > .c4 {
+  content: ""; position: absolute; width: 9px; height: 9px; background: var(--gold); transform: rotate(45deg);
+  box-shadow: 0 0 6px rgba(232, 196, 120, 0.6);
+}
+.frame::before { top: -5px; left: -5px; }
+.frame::after { top: -5px; right: -5px; }
+.frame > .c3 { bottom: -5px; left: -5px; }
+.frame > .c4 { bottom: -5px; right: -5px; }
+
+h1, h2, h3, .title { font-family: var(--title-font); color: var(--cream); font-weight: normal; margin: 0 0 12px; letter-spacing: 0.3px; }
+h1 { font-size: 30px; }
+h2 { font-size: 24px; }
+h3 { font-size: 18px; color: var(--gold); }
+.muted { color: var(--muted); }
+.gold { color: var(--gold); }
+
+/* divider like the game's ornament line */
+.divider { display: flex; align-items: center; gap: 10px; margin: 16px 0; color: var(--gold-2); }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-2), transparent); }
+.divider span { width: 7px; height: 7px; background: var(--gold-2); transform: rotate(45deg); }
+
+/* ---------- buttons: purple pill with gold edge and side ornaments ---------- */
+.btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 120px; height: 38px; padding: 0 26px; cursor: pointer;
+  font-family: var(--title-font); font-size: 17px; color: var(--cream);
+  background: linear-gradient(180deg, var(--purple-hi), var(--purple) 45%, var(--purple-2));
+  border: 1px solid var(--gold); border-radius: 19px;
+  box-shadow: inset 0 0 0 2px rgba(20, 10, 30, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: filter 0.12s, transform 0.05s;
+}
+.btn::before, .btn::after {
+  content: ""; position: absolute; top: 50%; width: 7px; height: 7px; background: var(--gold); transform: translateY(-50%) rotate(45deg);
+}
+.btn::before { left: -4px; }
+.btn::after { right: -4px; }
+.btn:hover { filter: brightness(1.2); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { filter: grayscale(0.8) brightness(0.6); cursor: default; }
+.btn.dark { background: linear-gradient(180deg, #2b2034, #1a1322); }
+.btn.danger { background: linear-gradient(180deg, #8a3434, #5c2020); }
+.btn.small { height: 30px; min-width: 0; padding: 0 16px; font-size: 14px; border-radius: 15px; }
+.btn.small::before, .btn.small::after { width: 5px; height: 5px; }
+.btn.icon { min-width: 0; width: 30px; padding: 0; }
+
+/* ---------- form controls (game text box: dark field with gold edge) ---------- */
+label.field { display: block; margin: 0 0 14px; }
+label.field > .lbl { display: block; color: var(--gold); font-family: var(--title-font); font-size: 15px; margin-bottom: 5px; }
+label.field > .help { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+input[type=text], input[type=number], input[type=password], select, textarea {
+  width: 100%; height: 36px; padding: 0 12px; color: var(--cream); font-family: var(--body-font); font-size: 15px;
+  background: rgba(10, 7, 14, 0.75); border: 1px solid var(--gold-dim); border-radius: 2px; outline: none;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+textarea { height: auto; padding: 8px 12px; resize: vertical; }
+input:focus, select:focus, textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(232, 196, 120, 0.35), inset 0 1px 4px rgba(0, 0, 0, 0.6); }
+select option { background: var(--panel-solid); }
+input[type=range] { width: 100%; accent-color: var(--gold-2); }
+
+/* toggle */
+.toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; margin: 0 0 14px; }
+.toggle input { display: none; }
+.toggle .knob { width: 44px; height: 22px; border-radius: 11px; background: #2a2033; border: 1px solid var(--gold-dim); position: relative; transition: 0.15s; flex: none; }
+.toggle .knob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: 0.15s; }
+.toggle input:checked + .knob { background: var(--purple); border-color: var(--gold); }
+.toggle input:checked + .knob::after { left: 24px; background: var(--gold); }
+.toggle .lbl { font-family: var(--title-font); color: var(--cream); font-size: 15px; }
+.toggle .help { display: block; color: var(--muted); font-size: 12px; font-family: var(--body-font); }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.25); }
+::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 5px; border: 2px solid rgba(0, 0, 0, 0.3); }
+
+/* status gem */
+.gem { display: inline-block; width: 11px; height: 11px; transform: rotate(45deg); background: var(--muted); box-shadow: 0 0 8px currentColor; }
+.gem.on { background: var(--green); color: var(--green); }
+.gem.wait { background: var(--amber); color: var(--amber); }
+.gem.off { background: var(--red); color: var(--red); }

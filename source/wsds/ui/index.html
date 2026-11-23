@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>WSDS - Witchspire Dedicated Server</title>
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="titlebar" data-tauri-drag-region>
+    <img class="logo" src="logo.png" alt="" data-tauri-drag-region />
+    <span class="name" data-tauri-drag-region>WSDS</span>
+    <span class="sub" data-tauri-drag-region>Witchspire Dedicated Server</span>
+    <div class="drag" data-tauri-drag-region></div>
+    <select id="serverPick" class="serverpick" title="Server to manage"></select>
+    <span class="titlestatus" data-tauri-drag-region><span id="tGem" class="gem off"></span><span id="tStatus">Stopped</span></span>
+    <button class="winbtn" id="wMin" title="Minimize">&#x2014;</button>
+    <button class="winbtn" id="wMax" title="Maximize">&#x25A1;</button>
+    <button class="winbtn close" id="wClose" title="Close">&#x2715;</button>
+  </div>
+
+  <div class="shell">
+    <nav class="menu">
+      <a data-page="dashboard" class="active">Dashboard</a>
+      <a data-page="players">Players <span class="count" id="navPlayers">0</span></a>
+      <a data-page="console">Console</a>
+      <a data-page="bans">Bans</a>
+      <a data-page="settings">Settings</a>
+      <div class="menu-foot">
+        <div class="muted small" id="footWorld">-</div>
+        <div class="muted small" id="footVersion">WSDS 1.0</div>
+      </div>
+    </nav>
+
+    <main>
+      <!-- ================= Dashboard ================= -->
+      <section id="page-dashboard" class="page active">
+        <div class="grid2">
+          <div class="frame"><i class="c3"></i><i class="c4"></i>
+            <h2 id="dWorld">Witchspire Dedicated Server</h2>
+            <div class="statusline"><span id="dGem" class="gem off"></span><span id="dStatus" class="title">Stopped</span></div>
+            <div class="stats">
+              <div><span class="k">Players</span><span class="v" id="dPlayers">0 / 0</span></div>
+              <div><span class="k">Uptime</span><span class="v" id="dUptime">-</span></div>
+              <div><span class="k">Port</span><span class="v" id="dPort">7777</span></div>
+              <div><span class="k">World slot</span><span class="v" id="dSlot">-</span></div>
+            </div>
+            <div class="divider"><span></span></div>
+            <div class="row gap">
+              <button class="btn" id="bStart">Start</button>
+              <button class="btn dark" id="bStop">Stop</button>
+              <button class="btn dark" id="bRestart">Restart</button>
+              <button class="btn dark" id="bSave">Save Now</button>
+              <button class="btn dark" id="bUpdate">Update Game</button>
+            </div>
+            <p class="muted small" id="dHint">Players join from the game's main menu: Join Dedicated Server.</p>
+          </div>
+
+          <div class="frame"><i class="c3"></i><i class="c4"></i>
+            <h3>Announce</h3>
+            <div class="row gap">
+              <input type="text" id="announce" placeholder="Message shown to every player" />
+              <button class="btn small" id="bAnnounce">Send</button>
+            </div>
+            <div class="divider"><span></span></div>
+            <h3>Time of Day</h3>
+            <div class="row gap">
+              <input type="range" id="timeSlider" min="0" max="23.5" step="0.5" value="12" />
+              <span class="timeval" id="timeVal">12:00</span>
+              <button class="btn small" id="bTime">Set</button>
+            </div>
+            <div class="divider"><span></span></div>
+            <h3>Folders</h3>
+            <div class="row gap wrap">
+              <button class="btn small dark" data-open="saves">World saves</button>
+              <button class="btn small dark" data-open="logs">Logs</button>
+              <button class="btn small dark" data-open="root">Mod folder</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="frame activity"><i class="c3"></i><i class="c4"></i>
+          <h3>Recent Activity</h3>
+          <div id="activity" class="activitylist"></div>
+        </div>
+      </section>
+
+      <!-- ================= Players ================= -->
+      <section id="page-players" class="page">
+        <div class="frame fill"><i class="c3"></i><i class="c4"></i>
+          <div class="row between"><h2>Players</h2><span class="muted" id="pSummary">No players online</span></div>
+          <table class="table">
+            <thead><tr><th>Name</th><th>Level</th><th>Health</th><th>Ping</th><th>Location</th><th class="right">Actions</th></tr></thead>
+            <tbody id="playerRows"></tbody>
+          </table>
+          <div class="empty" id="playersEmpty">Nobody is online. Players appear here as soon as they join.</div>
+        </div>
+      </section>
+
+      <!-- ================= Console ================= -->
+      <section id="page-console" class="page">
+        <div class="frame fill console-frame"><i class="c3"></i><i class="c4"></i>
+          <div class="row between">
+            <h2>Console</h2>
+            <div class="row gap">
+              <input type="text" id="cFilter" placeholder="Filter..." class="w200" />
+              <select id="cMode" class="w160"><option value="important">Important</option><option value="all">Everything</option></select>
+              <button class="btn small dark" id="cClear">Clear</button>
+            </div>
+          </div>
+          <div id="console" class="console"></div>
+          <div class="row gap">
+            <input type="text" id="cInput" placeholder="Admin command, e.g.  give Haze Items.AlderWood 20   (type help)" />
+            <button class="btn small" id="cSend">Run</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Bans ================= -->
+      <section id="page-bans" class="page">
+        <div class="frame fill"><i class="c3"></i><i class="c4"></i>
+          <h2>Bans</h2>
+          <table class="table">
+            <thead><tr><th>Name</th><th>Id</th><th>Reason</th><th>Date</th><th class="right"></th></tr></thead>
+            <tbody id="banRows"></tbody>
+          </table>
+          <div class="empty" id="bansEmpty">No bans.</div>
+        </div>
+      </section>
+
+      <!-- ================= Settings ================= -->
+      <section id="page-settings" class="page">
+        <div class="settings-wrap">
+          <div class="frame settings"><i class="c3"></i><i class="c4"></i>
+            <div class="row between"><h2>Settings</h2>
+              <div class="row gap"><span class="muted small" id="sSaved"></span><button class="btn" id="sSave">Save</button></div>
+            </div>
+            <p class="muted small">Most settings take effect the next time the server starts.</p>
+            <div id="settingsForm"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= Modal ================= -->
+  <div class="overlay" id="overlay">
+    <div class="frame modal" id="modal"><i class="c3"></i><i class="c4"></i>
+      <h2 id="mTitle">Title</h2>
+      <div id="mBody"></div>
+      <div class="divider"><span></span></div>
+      <div class="row gap center" id="mButtons"></div>
+    </div>
+  </div>
+
+  <!-- ================= First-time setup ================= -->
+  <div class="overlay wizard" id="wizard">
+    <div class="frame wizbox"><i class="c3"></i><i class="c4"></i>
+      <div class="wizhead">
+        <img src="logo.png" alt="" class="wizlogo" />
+        <div><h1>Welcome to WSDS</h1><div class="muted">Let's set up your Witchspire dedicated server.</div></div>
+      </div>
+      <div class="steps" id="wSteps"></div>
+      <div id="wBody" class="wizbody"></div>
+      <div class="divider"><span></span></div>
+      <div class="row between">
+        <button class="btn dark" id="wBack">Back</button>
+        <button class="btn" id="wNext">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="closing"><div class="frame modal"><i class="c3"></i><i class="c4"></i><h2>Stopping server...</h2><p class="muted">Saving the world and all players before closing.</p></div></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

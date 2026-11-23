@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Setup</title>
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="setup.css" />
+</head>
+<body>
+  <div class="titlebar" data-tauri-drag-region>
+    <img class="logo" id="logo" src="logo-client.png" alt="" data-tauri-drag-region />
+    <span class="name" id="appName" data-tauri-drag-region>Setup</span>
+    <span class="sub" id="appSub" data-tauri-drag-region></span>
+    <div class="drag" data-tauri-drag-region></div>
+    <button class="winbtn" id="wMin" title="Minimize">&#x2014;</button>
+    <button class="winbtn close" id="wClose" title="Close">&#x2715;</button>
+  </div>
+
+  <div class="shell">
+    <aside class="steps" id="steps"></aside>
+    <main class="frame stage"><i class="c3"></i><i class="c4"></i>
+      <div id="page" class="page"></div>
+      <div class="divider"><span></span></div>
+      <div class="row between">
+        <button class="btn dark" id="bBack">Back</button>
+        <span class="muted small" id="hint"></span>
+        <button class="btn" id="bNext">Next</button>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="setup.js"></script>
+</body>
+</html>

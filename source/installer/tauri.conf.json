@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Witchspire Co-op Mod Setup",
+  "version": "1.0.0",
+  "identifier": "com.witchspire.coopsetup",
+  "build": { "frontendDist": "ui" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Setup",
+        "width": 900,
+        "height": 640,
+        "resizable": false,
+        "decorations": false,
+        "center": true,
+        "backgroundColor": "#120c1a",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu --renderer-process-limit=1"
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.ico", "icons/icon.png"] }
+}

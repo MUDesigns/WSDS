@@ -1,0 +1,29 @@
+{
+  "WorldSlot": "SelfTestWorld",
+  "WorldName": "Self Test World",
+  "Level": "L_StarterIsland",
+  "Difficulty": 1,
+  "AutoSaveSeconds": 300,
+  "HeartbeatSeconds": 60,
+  "Port": 7777,
+  "ServerTickRate": 30,
+  "AutoRestartOnCrash": false,
+  "ConsoleVerbosity": "important",
+  "ServerDataDir": "ServerData",
+  "Coop": {
+    "InstancedLoot": true,
+    "InstancedLootRange": 6000,
+    "SharedObjectives": true,
+    "RetroactiveMilestones": true,
+    "CatchUpXP": true,
+    "CatchUpMaxMultiplier": 2.5,
+    "CatchUpPerLevel": 0.15,
+    "CoOwnerPermissions": "AllPlayers",
+    "Admins": "",
+    "CovenSynergy": true,
+    "CovenRange": 5000,
+    "CovenBonusPerMember": 0.1,
+    "CovenSkillShare": 0.25
+  },
+  "ExtraArgs": "-WSSelfTest -WSAutoCreateCharacters"
+}
