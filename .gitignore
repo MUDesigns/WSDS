@@ -24,3 +24,6 @@ tools/*.exe
 # Game fonts are read from the player's own install at runtime
 source/fonts-dev/
 source/icons_preview.png
+
+# ---- personal publishing tools
+NexusUpload.ps1
