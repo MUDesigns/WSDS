@@ -27,8 +27,13 @@ foreach ($e in @($manifest)) {
     $rel = $e.Path -replace '/', '\'
     $live = Join-Path $game $rel
     $hash = if (Test-Path $live) { Get-Sha256 $live } else { '' }
+    $bk = Join-Path $backup $rel
+    $backupIsVanilla = (Test-Path $bk) -and ((Get-Sha256 $bk) -eq $e.VanillaSha256)
     if ($hash -eq $e.PatchedSha256) { $plan += @{ Rel = $rel; Action = 'current' } }
-    elseif ($hash -eq $e.VanillaSha256 -or $Force) { $plan += @{ Rel = $rel; Action = 'patch' } }
+    elseif ($hash -eq $e.VanillaSha256) { $plan += @{ Rel = $rel; Action = 'patch' } }
+    # Patched by an earlier version of this mod: the saved original still matches this game version.
+    elseif ($backupIsVanilla) { $plan += @{ Rel = $rel; Action = 'upgrade' } }
+    elseif ($Force) { $plan += @{ Rel = $rel; Action = 'patch' } }
     else { Write-Host "  CHANGED BY GAME UPDATE  $rel" -ForegroundColor Yellow; $mismatch++ }
 }
 if ($mismatch -gt 0) {
@@ -62,9 +67,13 @@ foreach ($p in $plan) {
     if ($p.Action -eq 'current') { Write-Host "  up to date   $rel"; continue }
     $live = Join-Path $game $rel
     $bk = Join-Path $backup $rel
-    New-Item -ItemType Directory -Force (Split-Path -Parent $bk) | Out-Null
-    Copy-Item $live $bk -Force
+    # Only an unmodified game file is backed up; an upgrade keeps the original already saved.
+    if ($p.Action -eq 'patch') {
+        New-Item -ItemType Directory -Force (Split-Path -Parent $bk) | Out-Null
+        Copy-Item $live $bk -Force
+    }
     Copy-Item (Join-Path $payload "Patched\$rel") $live -Force
-    Write-Host "  patched      $rel" -ForegroundColor Green
+    $verb = if ($p.Action -eq 'upgrade') { 'upgraded ' } else { 'patched  ' }
+    Write-Host "  $verb   $rel" -ForegroundColor Green
 }
 Write-Host 'Install complete.' -ForegroundColor Green

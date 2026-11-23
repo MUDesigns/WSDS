@@ -55,6 +55,7 @@ const SCHEMA = [
   ]},
   { section: "Co-op Overhaul", step: "Co-op", fields: [
     { k: "Coop.InstancedLoot", label: "Per-player loot", type: "toggle", help: "Everyone gets their own loot from chests and kills." },
+    { k: "Coop.InstancedHarvest", label: "Per-player gathering", type: "toggle", help: "Satchels, coin piles, branches, rocks, flowers and bushes placed in the world can be gathered by every player; they regrow for each player on the usual timer." },
     { k: "Coop.InstancedLootRange", label: "Kill loot range (cm)", type: "number", min: 500, max: 50000, step: 500 },
     { k: "Coop.SharedObjectives", label: "Shared quest progress", type: "toggle", help: "Objectives complete for everyone online." },
     { k: "Coop.RetroactiveMilestones", label: "Catch-up for late joiners", type: "toggle", help: "New players receive milestones the world already reached." },
@@ -194,7 +195,7 @@ function applyStatus(st) {
   $("#bSave").disabled = status !== "running";
 }
 function refreshHeader() {
-  $$("[data-open]").forEach((b) => (b.style.display = conn.mode === "local" ? "" : "none"));
+  $("#folderBlock").style.display = conn.mode === "local" ? "" : "none";
   $("#bUpdate").style.display = config._steamcmd ? "" : "none";
   $("#dWorld").textContent = config.WorldName || "Witchspire Dedicated Server";
   $("#dPort").textContent = config.Port;
@@ -508,6 +509,9 @@ async function init() {
 
   if (conn.mode === "local" && !config.SetupComplete) { renderWizard(); $("#wizard").classList.add("show"); }
   if (config._autotest) autotest();
+  // Developer switch (WSDS_START_PAGE): open a page directly, e.g. for screenshots.
+  const startPage = (await invoke("op_local", { name: "get_config", args: {} }).catch(() => ({})))._startPage;
+  if (startPage) { const nav = document.querySelector(`[data-page="${startPage}"]`); if (nav) nav.click(); }
 }
 
 // Developer self-test (WSDS_AUTOTEST): exercises the real UI -> backend -> server path.

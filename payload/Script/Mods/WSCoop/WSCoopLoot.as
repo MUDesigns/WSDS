@@ -90,6 +90,105 @@ namespace WSCoopLoot
             Manager.ResetContainer(ContainerKey(Container));
     }
 
+    // ------------------------------------------------------------------ per-player harvesting
+    // Level-placed harvestables (satchels, coin piles, branches, rocks, flowers, berry bushes...): every player
+    // harvests each node for themselves and it stays up for everyone else. Nodes that normally regrow
+    // become available to that player again after the node's usual respawn time. Spawned nodes (spells,
+    // seeds) and player-grown plants keep vanilla behaviour.
+
+    int64 NowUnix()
+    {
+        return FDateTime::UtcNow().ToUnixTimestamp();
+    }
+
+    bool IsPerPlayerHarvest(const AHarvestableActor Harvestable)
+    {
+        return WSCoop::InstancedHarvest() && System::IsServer() && Harvestable != nullptr
+            && SaveGame::IsLevelPlacedActor(Harvestable) && WSCoop::GetManager() != nullptr;
+    }
+
+    bool HasHarvested(const AHarvestableActor Harvestable, const FString& PlayerKey)
+    {
+        AWSCoopManager Manager = WSCoop::GetManager();
+        return Manager != nullptr && Manager.HasHarvested(ContainerKey(Harvestable), PlayerKey, NowUnix());
+    }
+
+    // 0 = never regrows for this player.
+    int64 RegrowTime(const AHarvestableActor Harvestable)
+    {
+        if (!Harvestable.bCanRespawn)
+            return 0;
+        const float Seconds = Math::RandRange(Harvestable.RespawnCooldownRange.LowerBound.Value, Harvestable.RespawnCooldownRange.UpperBound.Value);
+        return NowUnix() + int64(Seconds);
+    }
+
+    void MarkHarvested(const AHarvestableActor Harvestable, const FString& PlayerKey, const FString& PlayerName)
+    {
+        AWSCoopManager Manager = WSCoop::GetManager();
+        if (Manager == nullptr || PlayerKey.IsEmpty())
+            return;
+        const int64 Until = RegrowTime(Harvestable);
+        Manager.MarkHarvested(ContainerKey(Harvestable), PlayerKey, Until);
+        const FString When = Until == 0 ? "never regrows" : f"regrows for them in {(Until - NowUnix()) / 60} min";
+        WSCoop::Info(f"Harvest {ContainerKey(Harvestable)}: {PlayerName} gathered it ({When}); still available to others");
+    }
+
+    // Returns true when this player already gathered the node (nothing happens; caller stops).
+    bool BlockRepeatHarvest(const AHarvestableActor Harvestable, APlayerCharacter Player)
+    {
+        if (!HasHarvested(Harvestable, WSCoop::PlayerKey(Player)))
+            return false;
+        WSCoop::Notify(Player, "You already gathered this.");
+        return true;
+    }
+
+    // Simulates two players on one level-placed harvestable; leaves no records behind.
+    FString SelfTest()
+    {
+        AWSCoopManager Manager = WSCoop::GetManager();
+        if (Manager == nullptr)
+            return "FAIL no coop manager";
+        TArray<AHarvestableActor> Nodes;
+        GetAllActorsOfClass(Nodes);
+        AHarvestableActor Node = nullptr;
+        AHarvestableActor OneShot = nullptr;
+        int Placed = 0;
+        for (AHarvestableActor H : Nodes)
+        {
+            if (!SaveGame::IsLevelPlacedActor(H) || !H.IsActivated())
+                continue;
+            Placed++;
+            if (Node == nullptr && H.bCanRespawn)
+                Node = H;
+            if (OneShot == nullptr && !H.bCanRespawn)
+                OneShot = H;
+        }
+        if (Node == nullptr)
+            return f"FAIL no level-placed harvestable loaded (harvestables={Nodes.Num()})";
+
+        const FString Key = ContainerKey(Node);
+        const bool A0 = HasHarvested(Node, "wstestA");
+        MarkHarvested(Node, "wstestA", "TestA");
+        const bool A1 = HasHarvested(Node, "wstestA");
+        const bool B1 = HasHarvested(Node, "wstestB");
+        const bool StillUp = Node.IsActivated();
+        Manager.MarkHarvested(Key, "wstestA", NowUnix() - 1); // pretend the regrow time has passed
+        const bool A2 = HasHarvested(Node, "wstestA");
+        bool OneShotOk = true;
+        FString OneShotInfo = "no one-time node loaded";
+        if (OneShot != nullptr)
+        {
+            MarkHarvested(OneShot, "wstestA", "TestA");
+            OneShotOk = HasHarvested(OneShot, "wstestA") && !HasHarvested(OneShot, "wstestB") && OneShot.IsActivated();
+            OneShotInfo = f"one-time node {ContainerKey(OneShot)} ({OneShot.Class.GetName()}): A blocked, B free, still up = {OneShotOk}";
+        }
+        Manager.ForgetPlayerLoot("wstestA");
+        Manager.ForgetPlayerLoot("wstestB");
+        const bool bOk = !A0 && A1 && !B1 && StillUp && !A2 && OneShotOk;
+        const FString Verdict = bOk ? "PASS" : "FAIL";
+        return f"{Verdict} placed={Placed} node {Key} ({Node.Class.GetName()}): A before={A0} A after={A1} B after={B1} still up={StillUp} A after regrow={A2}; {OneShotInfo}";
+    }
+
     // Enemy / boss drops. Returns false (-> vanilla drop) when no player is close enough.
     bool GrantToNearbyPlayers(AActor Source, ULootComponent LootComponent, const FString& Reason)
     {

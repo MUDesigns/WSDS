@@ -24,6 +24,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Griezly has decorative "st", "ct", "ck" ligatures that the game itself never uses. */
+html { font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0, "dlig" 0, "hlig" 0, "calt" 0; }
 html, body { margin: 0; height: 100%; }
 body {
   background:

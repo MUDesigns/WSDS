@@ -456,15 +456,14 @@ fn do_install(app: &AppHandle, opts: &Value) -> Result<Value, String> {
     if !is_game_dir(&game) {
         return Err(format!("Witchspire was not found at {}", game.display()));
     }
-    if game_running() {
-        return Err("Witchspire (or a Witchspire server) is running. Close it and try again.".into());
-    }
     let mod_root = game.join("WitchspireCoopMod");
 
     if FLAVOR == "server" {
-        // Stop a previous background service so its files can be replaced.
-        let _ = ps("Stop-ScheduledTask -TaskName 'WSDS' -ErrorAction SilentlyContinue; Get-Process WSDS -ErrorAction SilentlyContinue | Stop-Process -Force");
-        thread::sleep(Duration::from_secs(2));
+        // Updating a running server: stop the service, then let the game server save and exit.
+        stop_running_server(app, &mod_root);
+    }
+    if game_running() {
+        return Err("Witchspire (or a Witchspire server) is running. Close it and try again.".into());
     }
 
     step(app, "Copying files");
@@ -588,6 +587,9 @@ fn uninstall(app: AppHandle, path: String) -> Result<(), String> {
                 let _ = ps("foreach ($d in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('CommonPrograms'))) { Remove-Item (Join-Path $d 'WSDS.lnk') -ErrorAction SilentlyContinue }");
                 thread::sleep(Duration::from_secs(3));
             }
+            if FLAVOR == "server" {
+                stop_running_server(&app, &mod_root);
+            }
             if game_running() {
                 return Err("Witchspire is running. Close it and try again.".into());
             }
@@ -621,6 +623,37 @@ fn uninstall(app: AppHandle, path: String) -> Result<(), String> {
         });
     });
     Ok(())
+}
+
+/// Stops the WSDS background service and asks a running game server to save and exit (as WSDS does),
+/// forcing it only if it has not exited after two minutes.
+fn stop_running_server(app: &AppHandle, mod_root: &Path) {
+    let _ = ps("Stop-ScheduledTask -TaskName 'WSDS' -ErrorAction SilentlyContinue; Get-Process WSDS -ErrorAction SilentlyContinue | Stop-Process -Force");
+    thread::sleep(Duration::from_secs(2));
+    if !game_running() {
+        return;
+    }
+    let cfg: Value = fs::read_to_string(mod_root.join("ServerConfig.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(json!({}));
+    let data_dir = cfg["ServerDataDir"].as_str().unwrap_or("ServerData");
+    let data = if Path::new(data_dir).is_absolute() { PathBuf::from(data_dir) } else { mod_root.join(data_dir) };
+    let control = data.join("Saved").join("WSDS");
+    let _ = fs::create_dir_all(&control);
+    let _ = fs::write(control.join("shutdown.request"), b"");
+    step(app, "Saving the world and stopping the running server");
+    for _ in 0..120 {
+        if !game_running() {
+            break;
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+    if game_running() {
+        progress(app, "The server did not stop within 2 minutes - forcing it to close.");
+        let _ = run_hidden("taskkill", &["/F", "/IM", "Hercules-Win64-Shipping.exe"]);
+        thread::sleep(Duration::from_secs(2));
+    } else {
+        progress(app, "Server saved and stopped.");
+    }
+    let _ = fs::remove_file(control.join("shutdown.request"));
 }
 
 /// Deletes a directory tree without following junctions (ServerInstall contains junctions into the game).

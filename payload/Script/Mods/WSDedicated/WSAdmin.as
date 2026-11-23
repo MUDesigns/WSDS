@@ -204,6 +204,22 @@ namespace WSAdmin
         {
             Result(true, Cmd, f"pong {JoinFrom(Args, 1)}");
         }
+        else if (Cmd == "streamto" && Args.Num() >= 4)
+        {
+            // Moves the host's own viewpoint so that part of the world streams in (no player needed).
+            const FVector Where(String::Conv_StringToDouble(Args[1]), String::Conv_StringToDouble(Args[2]), String::Conv_StringToDouble(Args[3]));
+            APlayerController Host = Gameplay::GetPlayerController(0);
+            if (Host == nullptr) { Result(false, Cmd, "no host controller"); return; }
+            Host.SetActorLocation(Where);
+            if (Host.GetControlledPawn() != nullptr)
+                Host.GetControlledPawn().SetActorLocation(Where);
+            Result(true, Cmd, f"host viewpoint moved to {Where}");
+        }
+        else if (Cmd == "loottest")
+        {
+            const FString Outcome = WSCoopLoot::SelfTest();
+            Result(Outcome.StartsWith("PASS"), Cmd, Outcome);
+        }
         else if (Cmd == "players" || Cmd == "status")
         {
             Admin.EmitState();

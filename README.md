@@ -1,7 +1,7 @@
 # Witchspire Dedicated Server + Co-op Overhaul
 
 A headless, always-on Witchspire server you join by IP, plus a co-op progression overhaul
-(per-player loot, shared quest/spire progress with late-joiner catch-up, catch-up XP, coven synergy,
+(per-player loot and gathering, shared quest/spire progress with late-joiner catch-up, catch-up XP, coven synergy,
 co-owned sanctuaries).
 
 Built against Witchspire **0.3.0-ea, build CL 32175 (UE 5.7.4)**. Every player *and* the server
@@ -106,6 +106,7 @@ exactly as in normal play.
 |---|---|---|
 | `InstancedLoot` | `true` | Each player can loot each chest once; every looter gets an independent roll straight into their inventory. Enemy and boss kills give every player within range their own roll. |
 | `InstancedLootRange` | `6000` | Range (cm) for sharing kill drops. |
+| `InstancedHarvest` | `true` | Items placed in the world (satchels, coin piles, branches, rocks, flowers, bushes) can be gathered by every player. A node a player has gathered stays up for everyone else and regrows for that player on its usual timer; one-time finds such as satchels are once per player. |
 | `SharedObjectives` | `true` | When anyone completes an objective (story, spires, regions), it completes for everyone online, including its unlocks. |
 | `RetroactiveMilestones` | `true` | Players who join later get every milestone already achieved in the world, so nobody is locked out of flight, regions or story steps. |
 | `CatchUpXP` | `true` | Players below the highest-level player online earn more kill XP. |

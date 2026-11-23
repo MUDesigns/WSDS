@@ -29,7 +29,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const VERSION: &str = "0.0.2";
+const VERSION: &str = "0.0.3";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config
@@ -82,6 +82,7 @@ fn default_config() -> Value {
         "Coop": {
             "InstancedLoot": true,
             "InstancedLootRange": 6000,
+            "InstancedHarvest": true,
             "SharedObjectives": true,
             "RetroactiveMilestones": true,
             "CatchUpXP": true,
@@ -830,6 +831,7 @@ fn op(sink: &Sink, s: &Shared, name: &str, args: &Value) -> Result<Value, String
             v["_gameRoot"] = json!(s.paths.game_root(&cfg).display().to_string());
             v["_gameFound"] = json!(s.paths.game_root(&cfg).join("Hercules").exists());
             v["_autotest"] = json!(std::env::var("WSDS_AUTOTEST").is_ok());
+            v["_startPage"] = json!(std::env::var("WSDS_START_PAGE").unwrap_or_default());
             v["_steamcmd"] = json!(!cfg["SteamCmd"]["Path"].as_str().unwrap_or("").is_empty());
             v["_headless"] = json!(s.headless);
             Ok(v)

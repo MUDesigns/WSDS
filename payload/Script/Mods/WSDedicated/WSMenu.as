@@ -109,7 +109,6 @@ class UWSMenuSubsystem : UScriptWorldSubsystem
     private UEditableTextBox PortBox;
     private UEditableTextBox PasswordBox;
     private USizeBox PortSlot;
-    private bool bSyncFieldWidth = false;
     private UCommonActivatableWidgetSwitcher DialogSwitcher;
     private UCommonTextBlock StatusText;
     private UFoundationButtonBase JoinDialogButton;
@@ -234,11 +233,18 @@ class UWSMenuSubsystem : UScriptWorldSubsystem
             Stack.AddChild(PasswordBox);
 
             PortSlot.ClearHeightOverride();
+            PortSlot.ClearWidthOverride();
             PortSlot.SetContent(Stack);
+            // Lay the stack out exactly like the address box above it (same column, same slot settings),
+            // so all three boxes share its width and left edge.
             UVerticalBoxSlot RowSlot = Cast<UVerticalBoxSlot>(PortSlot.Slot);
-            if (RowSlot != nullptr)
-                RowSlot.SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
-            bSyncFieldWidth = true; // match the address box width once it has been laid out
+            UVerticalBoxSlot AddressSlot = Cast<UVerticalBoxSlot>(AddressBox.Slot);
+            if (RowSlot != nullptr && AddressSlot != nullptr)
+            {
+                RowSlot.SetHorizontalAlignment(AddressSlot.HorizontalAlignment);
+                RowSlot.SetPadding(AddressSlot.Padding);
+                WSDS::Info(f"Join dialog: port/password rows use the address slot layout (align={int(AddressSlot.HorizontalAlignment)}, padding={AddressSlot.Padding.Left},{AddressSlot.Padding.Right})");
+            }
         }
 
         // Join button (the Create button) and the "please wait" page.
@@ -353,16 +359,6 @@ class UWSMenuSubsystem : UScriptWorldSubsystem
     UFUNCTION(BlueprintOverride)
     void Tick(float DeltaTime)
     {
-        if (bSyncFieldWidth && AddressBox != nullptr && PortSlot != nullptr)
-        {
-            const float Width = AddressBox.GetDesiredSize().X;
-            if (Width > 20)
-            {
-                PortSlot.SetWidthOverride(Width);
-                bSyncFieldWidth = false;
-            }
-        }
-
         if (!bAutoOpened && DialogClass.IsValid() && System::ParseParam(System::GetCommandLine(), "WSOpenJoinDialog"))
         {
             AutoOpenTimer += DeltaTime;

@@ -31,6 +31,7 @@ namespace WSCoop
     }
 
     bool InstancedLoot() { return Flag("InstancedLoot", true); }
+    bool InstancedHarvest() { return Flag("InstancedHarvest", true); }
     float InstancedLootRange() { return Number("InstancedLootRange", 6000); }
     bool SharedObjectives() { return Flag("SharedObjectives", true); }
     bool RetroactiveMilestones() { return Flag("RetroactiveMilestones", true); }
@@ -172,6 +173,92 @@ class AWSCoopManager : AGameManager
     private TArray<FString> EffectRecords;
 
     private TSet<FString> LootLookup;
+
+    // Per-player harvesting: "<harvestable>|<playerKey>|<unix time it regrows for them; 0 = never>".
+    UPROPERTY(SaveGame)
+    private TArray<FString> HarvestRecords;
+
+    // "<harvestable>|<playerKey>" -> index into HarvestRecords (rebuilt on load).
+    private TMap<FString, int> HarvestLookup;
+
+    private void RebuildHarvestLookup()
+    {
+        HarvestLookup.Empty();
+        for (int i = 0; i < HarvestRecords.Num(); ++i)
+        {
+            TArray<FString> Fields;
+            HarvestRecords[i].ParseIntoArray(Fields, "|");
+            if (Fields.Num() == 3)
+                HarvestLookup.Add(f"{Fields[0]}|{Fields[1]}", i);
+        }
+    }
+
+    // True while this player's harvest of that node has not regrown yet.
+    bool HasHarvested(const FString& Harvestable, const FString& PlayerKey, int64 NowUnix)
+    {
+        if (HarvestLookup.Num() == 0 && HarvestRecords.Num() > 0)
+            RebuildHarvestLookup();
+        int Index = -1;
+        if (!HarvestLookup.Find(f"{Harvestable}|{PlayerKey}", Index) || !HarvestRecords.IsValidIndex(Index))
+            return false;
+        TArray<FString> Fields;
+        HarvestRecords[Index].ParseIntoArray(Fields, "|");
+        if (Fields.Num() != 3)
+            return false;
+        const int64 Until = String::Conv_StringToInt64(Fields[2]);
+        return Until == 0 || NowUnix < Until;
+    }
+
+    void MarkHarvested(const FString& Harvestable, const FString& PlayerKey, int64 UntilUnix)
+    {
+        if (PlayerKey.IsEmpty())
+            return;
+        if (HarvestLookup.Num() == 0 && HarvestRecords.Num() > 0)
+            RebuildHarvestLookup();
+        const FString Entry = f"{Harvestable}|{PlayerKey}|{UntilUnix}";
+        int Index = -1;
+        if (HarvestLookup.Find(f"{Harvestable}|{PlayerKey}", Index) && HarvestRecords.IsValidIndex(Index))
+            HarvestRecords[Index] = Entry;
+        else
+        {
+            HarvestRecords.Add(Entry);
+            HarvestLookup.Add(f"{Harvestable}|{PlayerKey}", HarvestRecords.Num() - 1);
+        }
+        MarkSaveGameDirty();
+    }
+
+    int HarvestRecordCount() const
+    {
+        return HarvestRecords.Num();
+    }
+
+    // Admin / tests: forget everything recorded for one player (chests looted, nodes harvested).
+    int ForgetPlayerLoot(const FString& PlayerKey)
+    {
+        int Removed = 0;
+        const FString LootSuffix = f"|{PlayerKey}";
+        for (int i = LootRecords.Num() - 1; i >= 0; --i)
+        {
+            if (LootRecords[i].EndsWith(LootSuffix))
+            {
+                LootRecords.RemoveAt(i);
+                Removed++;
+            }
+        }
+        const FString HarvestPart = f"|{PlayerKey}|";
+        for (int i = HarvestRecords.Num() - 1; i >= 0; --i)
+        {
+            if (HarvestRecords[i].Contains(HarvestPart))
+            {
+                HarvestRecords.RemoveAt(i);
+                Removed++;
+            }
+        }
+        RebuildLookup();
+        RebuildHarvestLookup();
+        MarkSaveGameDirty();
+        return Removed;
+    }
 
     // Transient quest-sharing state (see WSCoopQuests).
     FGameplayTag CurrentCompletionTag;
