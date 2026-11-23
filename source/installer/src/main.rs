@@ -238,7 +238,15 @@ fn steamcmd_run(app: &AppHandle, steam: &SteamState, dir: &str, user: &str, pass
             tools.display()
         ))?;
     }
-    let _ = app.emit("steam", json!({ "event": "line", "line": "Starting SteamCMD (it updates itself the first time)..." }));
+    // First run: SteamCMD updates itself and may restart, which would swallow piped commands.
+    // Let that finish in a separate run before the interactive sign-in.
+    let _ = app.emit("steam", json!({ "event": "line", "line": "Updating SteamCMD (takes a minute the first time)..." }));
+    if let Ok(o) = Command::new(&exe).arg("+quit").creation_flags(CREATE_NO_WINDOW).stdin(Stdio::null()).output() {
+        for line in String::from_utf8_lossy(&o.stdout).lines().filter(|l| !l.trim().is_empty()).rev().take(3).collect::<Vec<_>>().into_iter().rev() {
+            let _ = app.emit("steam", json!({ "event": "line", "line": line.trim() }));
+        }
+    }
+    let _ = app.emit("steam", json!({ "event": "line", "line": "Starting SteamCMD..." }));
     let mut child = Command::new(&exe)
         .creation_flags(CREATE_NO_WINDOW)
         .stdin(Stdio::piped())
