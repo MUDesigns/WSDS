@@ -1,0 +1,18 @@
+{
+ "path": "Gameplay/Player/Emote/PlayerEmoteAbility.as",
+ "vanilla": "A022AD600555015EE8E1D1A3864F64F48E0532724F3EE670435323248F743E01",
+ "patched": "B2CDA6055C37AD2705CE7A7CBB6C64A5AAD0067F86B4CC11807DEE6C42484CEB",
+ "hunks": [
+  {
+   "at": 72,
+   "remove": [
+    "        if (bHasLoopingMontage)\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] Cancel-input bindings only exist in the emoting player's own game. A headless server has no\r\n",
+    "        // input mappings: looking them up there reads a null pointer and crashes the server.\r\n",
+    "        if (bHasLoopingMontage && IsLocallyControlled())\r\n"
+   ]
+  }
+ ]
+}
