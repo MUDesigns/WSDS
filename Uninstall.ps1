@@ -2,9 +2,14 @@
 # Server data (ServerData\) and the server mirror (ServerInstall\) are left alone.
 $ErrorActionPreference = 'Stop'
 $mod = $PSScriptRoot
-$game = Join-Path (Split-Path -Parent $mod) 'Hercules\Script'
+$gameRoot = Split-Path -Parent $mod
+$game = Join-Path $gameRoot 'Hercules\Script'
 $backup = Join-Path $mod 'backup\Script'
-if (Get-Process -Name 'Hercules-Win64-Shipping' -ErrorAction SilentlyContinue) {
+# Only this game folder counts (its game or its server mirror), not another Witchspire install.
+$running = @(Get-Process -Name 'Hercules-Win64-Shipping' -ErrorAction SilentlyContinue | Where-Object {
+    -not $_.Path -or $_.Path.StartsWith($gameRoot, [StringComparison]::OrdinalIgnoreCase)
+})
+if ($running.Count -gt 0) {
     throw 'Witchspire (game or dedicated server) is running. Close it first, then run this again.'
 }
 foreach ($orig in Get-ChildItem -Recurse -File $backup) {

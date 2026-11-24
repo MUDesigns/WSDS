@@ -29,7 +29,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const VERSION: &str = "0.0.4";
+const VERSION: &str = "0.0.41";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config

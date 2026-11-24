@@ -1,0 +1,29 @@
+{
+ "path": "Gameplay/World/Map/MapMarker.as",
+ "vanilla": "197F81FC408E31FC57101325D03160594EF90B46B227A8C72CA3CFDA30CCD6BE",
+ "patched": "0E69C290982938976590ABEFF6BC752D4D920FC39C7C83F08390395562B0BFCA",
+ "hunks": [
+  {
+   "at": 19,
+   "remove": [
+    "        WidgetComp.SetVisibility(bShowObjectiveMarker);\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] A headless server can reach markers whose components are not there; a null access here\r\n",
+    "        // would abort the player's whole objective setup.\r\n",
+    "        if (WidgetComp != nullptr)\r\n",
+    "            WidgetComp.SetVisibility(bShowObjectiveMarker);\r\n"
+   ]
+  },
+  {
+   "at": 21,
+   "remove": [
+    "        WorldMapElementComponent.SetDiscoveredState(bShowObjectiveMarker ? EWorldMapElementState::Discovered : EWorldMapElementState::Unknown);\r\n"
+   ],
+   "add": [
+    "        if (WorldMapElementComponent != nullptr)\r\n",
+    "            WorldMapElementComponent.SetDiscoveredState(bShowObjectiveMarker ? EWorldMapElementState::Discovered : EWorldMapElementState::Unknown);\r\n"
+   ]
+  }
+ ]
+}

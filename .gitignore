@@ -10,6 +10,8 @@ ServerData/
 ServerInstall/
 _testdata/
 ServerConfig.json
+/WSDS.exe
+/WSDS.old.exe
 *.log
 *.bak
 
