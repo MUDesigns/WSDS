@@ -390,11 +390,113 @@ class UWSAdminSubsystem : UScriptWorldSubsystem
     private TArray<float> PendingDisconnectTimes;
     private TSet<APlayerController> Checked;
 
+    // ---- Lag diagnostics ----
+    // While the server is stuck on one long frame, nobody's movement is processed; when it catches up,
+    // the players' games snap them back (rubber banding). Every such frame is logged as a HITCH, and a
+    // summary is logged every minute while players are online.
+    private int64 LastFrameTicks = 0;
+    private float PerfWindow = 0;
+    private int PerfFrames = 0;
+    private float PerfWorst = 0;
+    private int PerfHitches = 0;
+    private float PerfFrozen = 0;
+    private bool bWorldSavedThisFrame = false;
+    private int PlayersSavedThisFrame = 0;
+
     UFUNCTION(BlueprintOverride)
     void OnWorldBeginPlay()
     {
         MaxPlayers = WSDS::IntParam("WSMaxPlayers", 0);
         Password = WSDS::Param("WSPassword", "");
+
+        USaveSubsystem Saves = USaveSubsystem::Get();
+        if (Saves != nullptr && System::IsServer() && WSDS::IsHeadlessHost())
+        {
+            Saves.OnWorldSaved.AddUFunction(this, n"OnWorldSavedForPerf");
+            Saves.OnPlayerSaved.AddUFunction(this, n"OnPlayerSavedForPerf");
+        }
+    }
+
+    UFUNCTION()
+    private void OnWorldSavedForPerf(UWorld InWorld, bool bInSuccess)
+    {
+        bWorldSavedThisFrame = true;
+    }
+
+    UFUNCTION()
+    private void OnPlayerSavedForPerf(APlayerController InPlayer, bool bInSuccess)
+    {
+        PlayersSavedThisFrame++;
+    }
+
+    private void TrackFrameTime()
+    {
+        const int64 Now = FDateTime::UtcNow().GetTicks();
+        if (LastFrameTicks == 0)
+        {
+            LastFrameTicks = Now;
+            return;
+        }
+        const float Frame = float(float64(Now - LastFrameTicks) / 10000000.0);
+        LastFrameTicks = Now;
+
+        PerfFrames++;
+        PerfWindow += Frame;
+        PerfWorst = Math::Max(PerfWorst, Frame);
+        const float HitchSeconds = Math::Max(0.05, float(WSDS::IntParam("WSHitchMs", 250)) / 1000.0);
+        if (Frame >= HitchSeconds)
+        {
+            PerfHitches++;
+            PerfFrozen += Frame;
+            FString During;
+            if (bWorldSavedThisFrame)
+                During += " world save";
+            if (PlayersSavedThisFrame > 0)
+                During += f" {PlayersSavedThisFrame} player save(s)";
+            if (!During.IsEmpty())
+                During = f" during:{During}";
+            WSDS::Info(f"HITCH: server froze for {Frame:.2}s (players={CountRemotePlayers()}){During}");
+        }
+        bWorldSavedThisFrame = false;
+        PlayersSavedThisFrame = 0;
+
+        if (PerfWindow >= 60.0)
+        {
+            const int Players = CountRemotePlayers();
+            if (Players > 0 || PerfHitches > 0)
+            {
+                FString Pings;
+                AGameStateBase GameState = Gameplay::GetGameState();
+                if (GameState != nullptr)
+                {
+                    for (APlayerState PS : GameState.PlayerArray)
+                    {
+                        APlayerController PC = PS != nullptr ? Cast<APlayerController>(PS.GetOwner()) : nullptr;
+                        if (PC != nullptr && !PC.IsLocalController())
+                            Pings += f" {PS.GetPlayerName()}={int(PS.GetPingInMilliseconds())}ms";
+                    }
+                }
+                const float AvgFps = PerfWindow > 0 ? float(PerfFrames) / PerfWindow : 0;
+                WSDS::Info(f"PERF last {int(PerfWindow)}s: {AvgFps:.1} fps, worst frame {PerfWorst:.2}s, hitches {PerfHitches} ({PerfFrozen:.1}s frozen), players={Players}, ping:{Pings}");
+            }
+            PerfWindow = 0;
+            PerfFrames = 0;
+            PerfWorst = 0;
+            PerfHitches = 0;
+            PerfFrozen = 0;
+        }
+    }
+
+    private int CountRemotePlayers() const
+    {
+        int Count = 0;
+        for (int i = 0; i < Gameplay::GetNumPlayerControllers(); i++)
+        {
+            APlayerController PC = Gameplay::GetPlayerController(i);
+            if (PC != nullptr && !PC.IsLocalController())
+                Count++;
+        }
+        return Count;
     }
 
     UFUNCTION(BlueprintOverride)
@@ -403,6 +505,7 @@ class UWSAdminSubsystem : UScriptWorldSubsystem
         if (!System::IsServer() || !WSDS::IsHeadlessHost())
             return;
         Uptime += DeltaTime;
+        TrackFrameTime();
 
         // Finish kicks: drop the connection if the client has not left on its own.
         for (int i = PendingDisconnect.Num() - 1; i >= 0; i--)

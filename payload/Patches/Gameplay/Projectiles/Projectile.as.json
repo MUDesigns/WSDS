@@ -1,0 +1,23 @@
+{
+ "path": "Gameplay/Projectiles/Projectile.as",
+ "vanilla": "580788631F900A210AEFF7D436579E4C787A0C97C76208C4F5AFA67ED9F2224C",
+ "patched": "25300953A654785295E3C60ED3B6B72697DC552E5E25C278C298DCDB198204CF",
+ "hunks": [
+  {
+   "at": 220,
+   "remove": [
+    "            OrbitMovement.Init(BaseDesc.Orbit, ActorLocation, InitialVelocity, BaseDesc.OwningAbilityComp.Owner.ActorLocation);\r\n"
+   ],
+   "add": [
+    "            // [WSCoop] Projectiles spawned by another projectile's hit have no owning ability component:\r\n",
+    "            // orbit the caster instead (or the spawn point) rather than failing the whole spawn.\r\n",
+    "            FVector OrbitCenter = ActorLocation;\r\n",
+    "            if (BaseDesc.OwningAbilityComp != nullptr && BaseDesc.OwningAbilityComp.Owner != nullptr)\r\n",
+    "                OrbitCenter = BaseDesc.OwningAbilityComp.Owner.ActorLocation;\r\n",
+    "            else if (BaseDesc.ActionEffectData.Instigator.Actor != nullptr)\r\n",
+    "                OrbitCenter = BaseDesc.ActionEffectData.Instigator.Actor.ActorLocation;\r\n",
+    "            OrbitMovement.Init(BaseDesc.Orbit, ActorLocation, InitialVelocity, OrbitCenter);\r\n"
+   ]
+  }
+ ]
+}

@@ -1,6 +1,6 @@
 [package]
 name = "wsds"
-version = "0.0.42"
+version = "0.0.43"
 description = "WSDS - Witchspire Dedicated Server"
 edition = "2021"
 

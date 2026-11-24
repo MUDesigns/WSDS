@@ -205,6 +205,16 @@ class UWSDedicatedBootstrapSubsystem : UScriptWorldSubsystem
         System::ExecuteConsoleCommand(f"t.MaxFPS {TickRate}");
         WSDS::Info(f"Server tick rate capped at {TickRate} Hz");
 
+        // Lag: the game itself freezes a joining or teleporting player until the world around them has
+        // loaded. On top of that the engine would stop the WHOLE server while that area loads ("blocking"
+        // on slow streaming) and force a full garbage collection after an area unloads (a player leaves or
+        // teleports away). On a slower host both freeze everyone for seconds, so they are off by default.
+        const int BlockOnSlowStreaming = Math::Clamp(WSDS::IntParam("WSBlockOnSlowStreaming", 0), 0, 1);
+        System::ExecuteConsoleCommand(f"wp.Runtime.BlockOnSlowStreaming {BlockOnSlowStreaming}");
+        const int ForceGC = Math::Clamp(WSDS::IntParam("WSForceGCAfterStreamOut", 0), 0, 1);
+        System::ExecuteConsoleCommand(f"s.ForceGCAfterLevelStreamedOut {ForceGC}");
+        WSDS::Info(f"World streaming: block server on slow streaming={BlockOnSlowStreaming}, forced GC after unload={ForceGC}");
+
         const int AutoSave = WSDS::IntParam("WSAutoSave", 300);
         System::ExecuteConsoleCommand(f"Herc.SaveGame.AutoSaveTimer {AutoSave}");
         WSDS::Info(f"Autosave interval set to {AutoSave}s");

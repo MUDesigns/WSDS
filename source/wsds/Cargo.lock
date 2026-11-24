@@ -4484,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "wsds"
-version = "0.0.42"
+version = "0.0.43"
 dependencies = [
  "getrandom 0.2.17",
  "hmac",

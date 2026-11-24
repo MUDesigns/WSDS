@@ -1,0 +1,17 @@
+{
+ "path": "Gameplay/World/Corruption/CorruptionSphere.as",
+ "vanilla": "A9B4864E8C4B3FF21E7EA9F428C63FE7C53A3C965DD150FE5E215B3FA74B3FF5",
+ "patched": "743C7385768B497E73BA9665D0785B4335AC60BA017A203D0525A898B1B8A315",
+ "hunks": [
+  {
+   "at": 137,
+   "remove": [
+    "        CorruptionSphereEffect.DestroyComponent();\r\n"
+   ],
+   "add": [
+    "        if (CorruptionSphereEffect != nullptr) // [WSCoop] may already be gone\r\n",
+    "            CorruptionSphereEffect.DestroyComponent();\r\n"
+   ]
+  }
+ ]
+}

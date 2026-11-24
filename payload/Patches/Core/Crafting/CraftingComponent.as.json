@@ -1,0 +1,17 @@
+{
+ "path": "Core/Crafting/CraftingComponent.as",
+ "vanilla": "FA2279C72BCD1B86E53B2A2135314B0A60EEB1395B3616D573708858BCAC42A3",
+ "patched": "BF77374FC541E91BDE11D7798198DF9D7E5E2A4BA08A0C3648740BCAF0BD423D",
+ "hunks": [
+  {
+   "at": 553,
+   "remove": [
+    "        if (System::IsDedicatedServer())\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] Visual effect only: a headless server cannot spawn it.\r\n",
+    "        if (System::IsDedicatedServer() || WSDS::IsHeadlessHost())\r\n"
+   ]
+  }
+ ]
+}

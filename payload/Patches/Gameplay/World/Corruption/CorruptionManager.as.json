@@ -1,0 +1,18 @@
+{
+ "path": "Gameplay/World/Corruption/CorruptionManager.as",
+ "vanilla": "8DAC2022E8C0393D96F9A64A0EF840111AEB17C84DA6A9C79D9B242253CD0AEC",
+ "patched": "218374741944D83210479BB6C86FF2818354B91248F60CF461B594FFF3DD6F2B",
+ "hunks": [
+  {
+   "at": 278,
+   "remove": [
+    "            if (!Pawn.CorruptionComp.IsInsideCorruption())\r\n"
+   ],
+   "add": [
+    "            // [WSCoop] Skip controllers without a character (a headless server's own controller, players\r\n",
+    "            // still loading). Failing here stopped the corruption from ever ending.\r\n",
+    "            if (Pawn == nullptr || !Pawn.CorruptionComp.IsInsideCorruption())\r\n"
+   ]
+  }
+ ]
+}

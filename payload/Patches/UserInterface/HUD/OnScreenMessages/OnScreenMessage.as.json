@@ -1,0 +1,17 @@
+{
+ "path": "UserInterface/HUD/OnScreenMessages/OnScreenMessage.as",
+ "vanilla": "0C0D5F0094B6C038F6C70E8118CF809C3E463D1EA5C82DB11526776E6D09DECA",
+ "patched": "309F42798D6C5464B330385429568949542FD101099C5AF53223D31B1BCE5130",
+ "hunks": [
+  {
+   "at": 359,
+   "remove": [
+    "        if (!System::IsDedicatedServer())\r\n"
+   ],
+   "add": [
+    "        // [WSCoop] A headless server has no HUD: the message is only shown by the players' games.\r\n",
+    "        if (!System::IsDedicatedServer() && OnScreenMessageWidget != nullptr)\r\n"
+   ]
+  }
+ ]
+}
