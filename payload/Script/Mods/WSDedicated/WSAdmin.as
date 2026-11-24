@@ -220,6 +220,15 @@ namespace WSAdmin
             const FString Outcome = WSCoopLoot::SelfTest();
             Result(Outcome.StartsWith("PASS"), Cmd, Outcome);
         }
+        else if (Cmd == "viewtest" && Args.Num() >= 3)
+        {
+            // viewtest node|satchel|chest <playerA> [playerB]   /   viewtest expire <playerA> <seconds>
+            const bool bExpire = Args[1] == "expire";
+            APlayerController PCB = (!bExpire && Args.Num() >= 4) ? FindController(Args[3]) : nullptr;
+            const float Seconds = (bExpire && Args.Num() >= 4) ? float(String::Conv_StringToDouble(Args[3])) : 0.0;
+            const FString Outcome = WSCoopLoot::ViewTest(Args[1], FindController(Args[2]), PCB, Seconds);
+            Result(!Outcome.StartsWith("FAIL"), Cmd, Outcome);
+        }
         else if (Cmd == "players" || Cmd == "status")
         {
             Admin.EmitState();

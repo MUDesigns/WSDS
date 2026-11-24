@@ -163,4 +163,37 @@ class UWSIdentityComponent : UHercActorComponent
     {
         WSCoop::ShowLocalMessage(FText::FromString(Message));
     }
+
+    // Per-player loot, shown only on this player's screen (see UWSCoopLootView).
+    UFUNCTION(Client)
+    void ClientLootGathered(AHarvestableActor Node, const FString& Key, float Seconds)
+    {
+        UWSCoopLootView View = UWSCoopLootView::Get();
+        if (View != nullptr)
+            View.LocalGathered(Node, Key, Seconds);
+    }
+
+    UFUNCTION(Client)
+    void ClientLootChestOpened(AWorldLootChestActor Chest, const FString& Key)
+    {
+        UWSCoopLootView View = UWSCoopLootView::Get();
+        if (View != nullptr)
+            View.LocalChestOpened(Chest, Key);
+    }
+
+    UFUNCTION(Client)
+    void ClientLootSync(const TArray<FString>& Names, const TArray<float>& Seconds)
+    {
+        UWSCoopLootView View = UWSCoopLootView::Get();
+        if (View != nullptr)
+            View.LocalSync(Names, Seconds);
+    }
+
+    UFUNCTION(Client)
+    void ClientLootUnhide(const FString& Key)
+    {
+        UWSCoopLootView View = UWSCoopLootView::Get();
+        if (View != nullptr)
+            View.LocalUnhide(Key);
+    }
 };

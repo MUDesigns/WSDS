@@ -1,0 +1,30 @@
+{
+ "path": "Gameplay/Items/ItemPickup.as",
+ "vanilla": "CA260E1E3422ECBE01AB420CDEE214C91C073DDB5E7665A6A56BDCE7E835E3C2",
+ "patched": "564C1FDD8A8FA7D3C33E2E35B0FEF4C9C5BA76F5913906373D4CF4A66CCC9187",
+ "hunks": [
+  {
+   "at": 102,
+   "remove": [],
+   "add": [
+    "        WSCoopLoot::ApplyPersonalPickup(this); // [WSCoop] someone else's personal loot is hidden here\r\n"
+   ]
+  },
+  {
+   "at": 108,
+   "remove": [],
+   "add": [
+    "            return;\r\n",
+    "        if (WSCoopLoot::IsPickupHiddenHere(this)) // [WSCoop] someone else's personal loot: no feedback here\r\n"
+   ]
+  },
+  {
+   "at": 202,
+   "remove": [],
+   "add": [
+    "        if (WSCoopLoot::IsPickupHiddenHere(this)) // [WSCoop] keep the new sparkle hidden too\r\n",
+    "            RootComponent.SetVisibility(false, true);\r\n"
+   ]
+  }
+ ]
+}

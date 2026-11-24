@@ -1,0 +1,49 @@
+{
+ "path": "Gameplay/Gathering/Harvestable.as",
+ "vanilla": "06E1742C813C5EB3DABFA3FCFD1A9FEA7B2ADC25F9A3F0B5413157C114023BD2",
+ "patched": "55443DC87ACD5C9EA89FA4C69BC6C656DEE26AF31E98FE3E0F53AFECBCF2E535",
+ "hunks": [
+  {
+   "at": 43,
+   "remove": [],
+   "add": [
+    "        WSCoopLoot::HideIfTakenHere(this); // [WSCoop] this player already gathered it: stays hidden for them\r\n"
+   ]
+  },
+  {
+   "at": 47,
+   "remove": [],
+   "add": [
+    "        }\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop] Per-player gathering: the gatherer's own game plays the usual pickup feedback and hides the\r\n",
+    "    // node for them until it regrows for them; the server keeps it up for everyone else.\r\n",
+    "    void WSCoopPlayLocalPickup()\r\n",
+    "    {\r\n",
+    "        if (PickupSound != nullptr)\r\n",
+    "        {\r\n",
+    "            AkGameplay::PostEvent(PickupSound, this, 0);\r\n",
+    "        }\r\n",
+    "        UNiagaraSystem PickupEffect = UInventorySettings::GetItemPickupEffect();\r\n",
+    "        if (PickupEffect != nullptr)\r\n",
+    "        {\r\n",
+    "            Niagara::SpawnSystemAtLocation(PickupEffect, ActorLocation, ActorRotation);\r\n",
+    "        }\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    void WSCoopSetLocallyHidden(const bool bHide)\r\n",
+    "    {\r\n",
+    "        if (System::IsServer())\r\n",
+    "        {\r\n",
+    "            // Listen-server host: hide it on this screen only; other players still need its collision.\r\n",
+    "            Root.SetVisibility(!bHide, true);\r\n",
+    "            ShineEffect.SetActive(!bHide);\r\n",
+    "        }\r\n",
+    "        else\r\n",
+    "        {\r\n",
+    "            SetVisibility(!bHide);\r\n"
+   ]
+  }
+ ]
+}

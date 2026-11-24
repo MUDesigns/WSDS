@@ -104,9 +104,9 @@ exactly as in normal play.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `InstancedLoot` | `true` | Each player can loot each chest once; every looter gets an independent roll straight into their inventory. Enemy and boss kills give every player within range their own roll. |
+| `InstancedLoot` | `true` | Each player can loot each chest once. The chest opens as usual on the looter's screen and the loot pops out as items only that player can see and pick up; then the chest disappears for them, while it stays closed and available for everyone else. Enemy and boss kills give every player within range their own roll. |
 | `InstancedLootRange` | `6000` | Range (cm) for sharing kill drops. |
-| `InstancedHarvest` | `true` | Items placed in the world (satchels, coin piles, branches, rocks, flowers, bushes) can be gathered by every player. A node a player has gathered stays up for everyone else and regrows for that player on its usual timer; one-time finds such as satchels are once per player. |
+| `InstancedHarvest` | `true` | Items placed in the world (satchels, coin piles, branches, rocks, flowers, bushes) can be gathered by every player. Gathering plays the usual pickup sound and sparkle and the node disappears for that player only: it stays up for everyone else and comes back for that player on its usual regrow timer. One-time finds such as satchels are once per player and never come back for them. |
 | `SharedObjectives` | `true` | When anyone completes an objective (story, spires, regions), it completes for everyone online, including its unlocks. |
 | `RetroactiveMilestones` | `true` | Players who join later get every milestone already achieved in the world, so nobody is locked out of flight, regions or story steps. |
 | `CatchUpXP` | `true` | Players below the highest-level player online earn more kill XP. |

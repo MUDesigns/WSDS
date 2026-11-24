@@ -142,13 +142,87 @@ namespace WSCoop
     }
 }
 
+// A loot pickup dropped for one player only (see WSCoopLoot::DropPersonalLoot).
+USTRUCT()
+struct FWSCoopPersonalPickup
+{
+    UPROPERTY()
+    AItemPickup Pickup;
+
+    UPROPERTY()
+    APlayerState Owner;
+};
+
 // World-saved coop state. Lives in the world save so it follows the server, not any single player.
 UCLASS()
 class AWSCoopManager : AGameManager
 {
     default bReplicates = true;
+    default bAlwaysRelevant = true;
     default bSupportsSaving = true;
     default bSupportsDirtying = true;
+
+    // Personal loot pickups in the world and whose they are. Replicated so every game can hide the ones
+    // that belong to someone else (kept out of AItemPickup: changing that class breaks its cooked Blueprints).
+    UPROPERTY(Replicated, Transient, ReplicatedUsing = OnRep_PersonalPickups)
+    TArray<FWSCoopPersonalPickup> PersonalPickups;
+
+    UFUNCTION()
+    void OnRep_PersonalPickups()
+    {
+        for (const FWSCoopPersonalPickup& Entry : PersonalPickups)
+            WSCoopLoot::ApplyPersonalPickup(Entry.Pickup);
+    }
+
+    void AddPersonalPickup(AItemPickup Pickup, APlayerState PickupOwner)
+    {
+        FWSCoopPersonalPickup Entry;
+        Entry.Pickup = Pickup;
+        Entry.Owner = PickupOwner;
+        PersonalPickups.Add(Entry);
+        ForceNetUpdate();
+    }
+
+    // Owner of a personal pickup; nullptr for ordinary pickups.
+    APlayerState PersonalOwnerOf(const AActor Pickup) const
+    {
+        if (Pickup == nullptr)
+            return nullptr;
+        for (const FWSCoopPersonalPickup& Entry : PersonalPickups)
+        {
+            if (Entry.Pickup == Pickup)
+                return Entry.Owner;
+        }
+        return nullptr;
+    }
+
+    bool IsPersonalPickup(const AActor Pickup) const
+    {
+        if (Pickup == nullptr)
+            return false;
+        for (const FWSCoopPersonalPickup& Entry : PersonalPickups)
+        {
+            if (Entry.Pickup == Pickup)
+                return true;
+        }
+        return false;
+    }
+
+    // Server: forget pickups that were collected or timed out.
+    void PrunePersonalPickups()
+    {
+        int Removed = 0;
+        for (int i = PersonalPickups.Num() - 1; i >= 0; --i)
+        {
+            if (!IsValid(PersonalPickups[i].Pickup))
+            {
+                PersonalPickups.RemoveAt(i);
+                Removed++;
+            }
+        }
+        if (Removed > 0)
+            ForceNetUpdate();
+    }
 
     // Admin time-of-day adjustment in hours, added to the game's world clock (replicated to clients).
     UPROPERTY(SaveGame, Replicated)
@@ -230,6 +304,52 @@ class AWSCoopManager : AGameManager
     int HarvestRecordCount() const
     {
         return HarvestRecords.Num();
+    }
+
+    // Tests: makes all of a player's regrowing harvests come back at UntilUnix.
+    int SetRegrowTimes(const FString& PlayerKey, int64 UntilUnix)
+    {
+        int Changed = 0;
+        for (int i = 0; i < HarvestRecords.Num(); ++i)
+        {
+            TArray<FString> Fields;
+            HarvestRecords[i].ParseIntoArray(Fields, "|");
+            if (Fields.Num() != 3 || Fields[1] != PlayerKey || Fields[2] == "0")
+                continue;
+            HarvestRecords[i] = f"{Fields[0]}|{Fields[1]}|{UntilUnix}";
+            Changed++;
+        }
+        MarkSaveGameDirty();
+        return Changed;
+    }
+
+    // Everything one player has taken that their game should keep hidden: gathered nodes that have not
+    // regrown for them yet and looted chests. OutUntil: unix time it comes back for them, 0 = never.
+    void GetTakenBy(const FString& PlayerKey, int64 NowUnix, TArray<FString>& OutNames, TArray<int64>& OutUntil) const
+    {
+        const FString HarvestPart = f"|{PlayerKey}|";
+        for (const FString& Record : HarvestRecords)
+        {
+            if (!Record.Contains(HarvestPart))
+                continue;
+            TArray<FString> Fields;
+            Record.ParseIntoArray(Fields, "|");
+            if (Fields.Num() != 3 || Fields[1] != PlayerKey)
+                continue;
+            const int64 Until = String::Conv_StringToInt64(Fields[2]);
+            if (Until != 0 && Until <= NowUnix)
+                continue;
+            OutNames.Add(Fields[0]);
+            OutUntil.Add(Until);
+        }
+        const FString LootSuffix = f"|{PlayerKey}";
+        for (const FString& Record : LootRecords)
+        {
+            if (!Record.EndsWith(LootSuffix))
+                continue;
+            OutNames.Add(Record.Left(Record.Len() - LootSuffix.Len()));
+            OutUntil.Add(0);
+        }
     }
 
     // Admin / tests: forget everything recorded for one player (chests looted, nodes harvested).

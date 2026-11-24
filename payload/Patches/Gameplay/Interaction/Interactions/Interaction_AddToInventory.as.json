@@ -1,0 +1,16 @@
+{
+ "path": "Gameplay/Interaction/Interactions/Interaction_AddToInventory.as",
+ "vanilla": "7DEAB83888AC81EA1AB7F3563CC351250DA76D9BB00E1083256F37C22C2CF673",
+ "patched": "7FBE96A2BE04B659669468B217CCE493A847BEA9BFD5F55B937FAFBBFE415CDD",
+ "hunks": [
+  {
+   "at": 22,
+   "remove": [],
+   "add": [
+    "        if (!WSCoopLoot::CanTakePickup(Context)) // [WSCoop] personal loot: only its owner can take it\r\n",
+    "            return;\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}

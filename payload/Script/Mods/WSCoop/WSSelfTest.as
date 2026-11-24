@@ -146,16 +146,18 @@ class UWSSelfTestSubsystem : UScriptWorldSubsystem
         const bool bTpB = B.HercTeleportTo(Base + Chest.GetActorForwardVector() * 140 + Chest.GetActorRightVector() * 120, FRotator(), false, true);
         WSCoop::Info(f"SELFTEST teleported players to chest: A={bTpA} B={bTpB}");
 
+        // Loot pops out as personal pickups shortly after the opening (UWSCoopLootView queue).
+        UWSCoopLootView View = UWSCoopLootView::Get();
         const bool bA = Interactable.Interact(FInteractionContext(A.InteractorComponent, Interactable, EInteractionType::OnActivated));
-        const int A1 = CountItems(A);
+        const int A1 = View.PendingDropsFor(A);
         const bool bB = Interactable.Interact(FInteractionContext(B.InteractorComponent, Interactable, EInteractionType::OnActivated));
-        const int B1 = CountItems(B);
+        const int B1 = View.PendingDropsFor(B);
         const bool bA2 = Interactable.Interact(FInteractionContext(A.InteractorComponent, Interactable, EInteractionType::OnActivated));
-        const int A2 = CountItems(A);
+        const int A2 = View.PendingDropsFor(A);
 
-        WSCoop::Info(f"SELFTEST loot: interact A={bA} B={bB} A-again={bA2}; items A {A0}->{A1}->{A2}, B {B0}->{B1}");
-        Check(bA && A1 > A0, "player A received their own loot from the chest");
-        Check(bB && B1 > B0, "player B received independent loot from the same chest");
+        WSCoop::Info(f"SELFTEST loot: interact A={bA} B={bB} A-again={bA2}; personal drops queued A {A1}->{A2}, B {B1} (items A {A0}, B {B0})");
+        Check(bA && A1 == 1, "player A gets their own loot drop from the chest");
+        Check(bB && B1 == 1, "player B gets an independent loot drop from the same chest");
         Check(A2 == A1, "player A cannot loot the same chest twice");
         Check(Manager.HasLooted(Key, WSCoop::PlayerKey(A)) && Manager.HasLooted(Key, WSCoop::PlayerKey(B)), "both looters recorded for persistence");
     }
