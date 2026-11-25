@@ -51,7 +51,26 @@ namespace WSAdmin
 
     FString Json(const FString& Value)
     {
-        return "\"" + Value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        FString Escaped = Value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        // Control characters (newlines in names or quest texts, ...) would break the JSON and the log line.
+        bool bHasControl = false;
+        for (int i = 0; i < Escaped.Len() && !bHasControl; i++)
+            bHasControl = (int(Escaped[i]) & 0xFFFF) < 0x20;
+        if (bHasControl)
+        {
+            const FString HexDigits = "0123456789abcdef";
+            FString Out;
+            for (int i = 0; i < Escaped.Len(); i++)
+            {
+                const int Code = int(Escaped[i]) & 0xFFFF;
+                if (Code < 0x20)
+                    Out += "\\u00" + HexDigits.Mid(Code >> 4, 1) + HexDigits.Mid(Code & 15, 1);
+                else
+                    Out += Escaped.Mid(i, 1);
+            }
+            Escaped = Out;
+        }
+        return "\"" + Escaped + "\"";
     }
 
     void Result(bool bOk, const FString& Cmd, const FString& Message)
@@ -209,11 +228,33 @@ namespace WSAdmin
 
     void Dispatch(const FString& Line)
     {
-        WSDS::Info(f"ADMIN > {Line}");
+        if (!Line.StartsWith("map"))
+            WSDS::Info(f"ADMIN > {Line}");
         TArray<FString> Args = Tokenize(Line);
         if (Args.Num() == 0)
             return;
         const FString Cmd = Args[0].ToLower();
+        // Live map lease: renewed every few seconds while someone views the map, so it stays out of the console.
+        if (Cmd == "mapwatch")
+        {
+            UWSMapSubsystem Map = UWSMapSubsystem::Get();
+            if (Map != nullptr)
+                Map.Watch(Args.Num() >= 2 ? float(String::Conv_StringToDouble(Args[1])) : 15.0);
+            return;
+        }
+        // Developer tools (map survey, test fixtures) only on servers started with -WSDevTools.
+        if ((Cmd == "mapsurvey" || Cmd.StartsWith("maptest")) && !System::ParseParam(System::GetCommandLine(), "WSDevTools"))
+        {
+            Result(false, Cmd, "developer command - start the server with -WSDevTools to use it");
+            return;
+        }
+        if (Cmd == "mapinfo" || Cmd == "mapplayers" || Cmd == "mapprogress" || Cmd == "maptestchunk" || Cmd == "maptestquest" || Cmd == "maptestjson")
+        {
+            UWSMapSubsystem Map = UWSMapSubsystem::Get();
+            if (Map != nullptr)
+                Map.Answer(Cmd, Args);
+            return;
+        }
         UWSAdminSubsystem Admin = UWSAdminSubsystem::Get();
 
         if (Cmd == "ping")
@@ -230,6 +271,18 @@ namespace WSAdmin
             if (Host.GetControlledPawn() != nullptr)
                 Host.GetControlledPawn().SetActorLocation(Where);
             Result(true, Cmd, f"host viewpoint moved to {Where}");
+        }
+        else if (Cmd == "mapsurvey")
+        {
+            UWSMapSurveySubsystem Survey = UWSMapSurveySubsystem::Get();
+            if (Survey != nullptr)
+            {
+                // mapsurvey <stepCm> [minX minY maxX maxY]
+                TArray<float> Area;
+                for (int i = 2; i < Args.Num() && i < 6; i++)
+                    Area.Add(float(String::Conv_StringToDouble(Args[i])));
+                Survey.Start(Args.Num() >= 2 ? float(String::Conv_StringToDouble(Args[1])) : 30000.0, Area);
+            }
         }
         else if (Cmd == "loottest")
         {
@@ -628,6 +681,9 @@ class UWSAdminSubsystem : UScriptWorldSubsystem
                 PlayersJson += (PlayersJson.IsEmpty() ? "" : ",") + Entry;
             }
         }
+        UWSMapSubsystem Map = UWSMapSubsystem::Get();
+        if (Map != nullptr)
+            Map.NoteOnlinePlayers();
         const FString Slot = USaveSubsystem::Get().GetSlotName();
         Log(n"WSDS", f"[WSDS-STATE] {{\"uptime\":{int(Uptime)},\"slot\":{WSAdmin::Json(Slot)},\"maxPlayers\":{MaxPlayers},\"players\":[{PlayersJson}]}}");
     }

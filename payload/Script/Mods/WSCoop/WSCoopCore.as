@@ -255,6 +255,120 @@ class AWSCoopManager : AGameManager
     // "<harvestable>|<playerKey>" -> index into HarvestRecords (rebuilt on load).
     private TMap<FString, int> HarvestLookup;
 
+    // Live map (wsdsmaps.com): every player who has played here, "<playerKey>|<lastSeenUnix>|<name>".
+    UPROPERTY(SaveGame)
+    private TArray<FString> PlayerRegistry;
+
+    // Live map: each player's quest log as of their last save, "<playerKey>|<asOfUnix>|<questsJson>"
+    // (a player's objectives only exist in memory while they are online).
+    UPROPERTY(SaveGame)
+    private TArray<FString> QuestCache;
+
+    void NotePlayer(const FString& Key, const FString& PlayerName, int64 NowUnix)
+    {
+        if (Key.IsEmpty())
+            return;
+        const FString Prefix = f"{Key}|";
+        for (int i = 0; i < PlayerRegistry.Num(); ++i)
+        {
+            if (!PlayerRegistry[i].StartsWith(Prefix))
+                continue;
+            TArray<FString> Fields;
+            PlayerRegistry[i].ParseIntoArray(Fields, "|", false);
+            const int64 Seen = Fields.Num() >= 2 ? String::Conv_StringToInt64(Fields[1]) : 0;
+            const FString OldName = Fields.Num() >= 3 ? PlayerRegistry[i].RightChop(Fields[0].Len() + Fields[1].Len() + 2) : "";
+            if (OldName == PlayerName && NowUnix - Seen < 60)
+                return;
+            PlayerRegistry[i] = f"{Key}|{NowUnix}|{PlayerName}";
+            MarkSaveGameDirty();
+            return;
+        }
+        PlayerRegistry.Add(f"{Key}|{NowUnix}|{PlayerName}");
+        MarkSaveGameDirty();
+    }
+
+    // Registered players as parallel arrays.
+    void GetRegisteredPlayers(TArray<FString>& OutKeys, TArray<FString>& OutNames, TArray<int64>& OutLastSeen) const
+    {
+        for (const FString& Entry : PlayerRegistry)
+        {
+            TArray<FString> Fields;
+            Entry.ParseIntoArray(Fields, "|", false);
+            if (Fields.Num() < 3)
+                continue;
+            OutKeys.Add(Fields[0]);
+            OutLastSeen.Add(String::Conv_StringToInt64(Fields[1]));
+            OutNames.Add(Entry.RightChop(Fields[0].Len() + Fields[1].Len() + 2));
+        }
+    }
+
+    void SetQuestCache(const FString& Key, const FString& QuestsJson, int64 NowUnix)
+    {
+        if (Key.IsEmpty())
+            return;
+        const FString Entry = f"{Key}|{NowUnix}|{QuestsJson}";
+        const FString Prefix = f"{Key}|";
+        for (int i = 0; i < QuestCache.Num(); ++i)
+        {
+            if (QuestCache[i].StartsWith(Prefix))
+            {
+                QuestCache[i] = Entry;
+                MarkSaveGameDirty();
+                return;
+            }
+        }
+        QuestCache.Add(Entry);
+        MarkSaveGameDirty();
+    }
+
+    bool GetQuestCache(const FString& Key, FString& OutJson, int64& OutAsOf) const
+    {
+        const FString Prefix = f"{Key}|";
+        for (const FString& Entry : QuestCache)
+        {
+            if (!Entry.StartsWith(Prefix))
+                continue;
+            const FString Rest = Entry.RightChop(Prefix.Len());
+            const int Bar = Rest.Find("|");
+            if (Bar < 0)
+                return false;
+            OutAsOf = String::Conv_StringToInt64(Rest.Left(Bar));
+            OutJson = Rest.RightChop(Bar + 1);
+            return true;
+        }
+        return false;
+    }
+
+    // Containers this player has looted (instanced loot records).
+    TArray<FString> GetLootedContainers(const FString& PlayerKey) const
+    {
+        TArray<FString> Out;
+        const FString Suffix = f"|{PlayerKey}";
+        for (const FString& Record : LootRecords)
+        {
+            if (Record.EndsWith(Suffix))
+                Out.Add(Record.Left(Record.Len() - Suffix.Len()));
+        }
+        return Out;
+    }
+
+    // This player's harvest records whose node name contains Filter, as "<node>|<regrowsAtUnix; 0 = never>".
+    TArray<FString> GetHarvestEntries(const FString& PlayerKey, const FString& Filter) const
+    {
+        TArray<FString> Out;
+        const FString Part = f"|{PlayerKey}|";
+        for (const FString& Record : HarvestRecords)
+        {
+            if (!Record.Contains(Part) || !Record.Contains(Filter))
+                continue;
+            TArray<FString> Fields;
+            Record.ParseIntoArray(Fields, "|");
+            if (Fields.Num() == 3 && Fields[1] == PlayerKey)
+                Out.Add(f"{Fields[0]}|{Fields[2]}");
+        }
+        return Out;
+    }
+
     private void RebuildHarvestLookup()
     {
         HarvestLookup.Empty();
