@@ -4,7 +4,7 @@
 //     key   = SHA256("<salt>:<password>")          (same derivation as remote control)
 //     proof = hex(HMAC-SHA256(key, nonce))         (nonce: single use, 60 s)
 
-use crate::{derive_key, hex, http_response, info, load_config, now_secs, random_hex, read_request, unhex, write_config, Shared, Sink, CREATE_NO_WINDOW, VERSION};
+use crate::{hex, http_response, info, load_config, now_secs, random_hex, unhex, write_config, Shared, Sink, CREATE_NO_WINDOW, VERSION};
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
 use sha2::Sha256;
@@ -16,6 +16,14 @@ use std::process::Command;
 use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender, TrySendError};
 use std::thread;
 use std::time::Duration;
+
+/// Live-map key: PBKDF2-HMAC-SHA256(password, salt, 100 000 rounds), hex. Slow on purpose: a captured
+/// proof must not be cheap to brute-force offline.
+pub fn map_key(salt: &str, password: &str) -> String {
+    let mut key = [0u8; 32];
+    pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), salt.as_bytes(), 100_000, &mut key);
+    hex(&key)
+}
 
 pub fn proof(key_hex: &str, nonce: &str) -> String {
     let key = unhex(key_hex).unwrap_or_default();
@@ -32,6 +40,7 @@ pub fn proof_ok(key_hex: &str, nonce: &str, proof_hex: &str) -> bool {
 }
 
 const NONCE_LIFE: u64 = 60;
+pub const MAX_NONCES: usize = 1000;
 const TOKEN_LIFE: u64 = 600;
 
 #[derive(Debug, PartialEq)]
@@ -47,11 +56,14 @@ pub struct Auth {
 }
 
 impl Auth {
-    pub fn new_nonce(&mut self, now: u64) -> String {
+    pub fn new_nonce(&mut self, now: u64) -> Option<String> {
         self.nonces.retain(|_, exp| *exp >= now);
+        if self.nonces.len() >= MAX_NONCES {
+            return None;
+        }
         let n = random_hex(16);
         self.nonces.insert(n.clone(), now + NONCE_LIFE);
-        n
+        Some(n)
     }
 
     /// Spends the nonce (even on a wrong password) and returns a session token.
@@ -152,6 +164,114 @@ impl Lease {
     }
 }
 
+
+// ---------------------------------------------------------------- limits for the internet-facing map port
+
+/// Requests per address per minute (fixed window).
+#[derive(Default)]
+pub struct IpLimit {
+    hits: HashMap<String, (u64, u32)>,
+}
+
+impl IpLimit {
+    pub fn allow(&mut self, ip: &str, now: u64, per_minute: u32) -> bool {
+        if self.hits.len() > 10_000 {
+            self.hits.retain(|_, (start, _)| now < *start + 60);
+        }
+        let e = self.hits.entry(ip.to_string()).or_insert((now, 0));
+        if now >= e.0 + 60 {
+            *e = (now, 0);
+        }
+        e.1 += 1;
+        e.1 <= per_minute
+    }
+}
+
+/// Wrong join passwords per address: 5 within 10 minutes locks that address out of /map/auth for 10 minutes.
+#[derive(Default)]
+pub struct AuthGuard {
+    failures: HashMap<String, (Vec<u64>, u64)>, // recent wrong-password times, locked until
+}
+
+impl AuthGuard {
+    pub fn blocked(&mut self, ip: &str, now: u64) -> bool {
+        self.failures.get(ip).is_some_and(|(_, until)| now < *until)
+    }
+    pub fn failed(&mut self, ip: &str, now: u64) {
+        if self.failures.len() > 10_000 {
+            self.failures.retain(|_, (times, until)| now < *until || times.iter().any(|t| now < t + 600));
+        }
+        let (times, until) = self.failures.entry(ip.to_string()).or_default();
+        times.retain(|t| now < t + 600);
+        times.push(now);
+        if times.len() >= 5 {
+            *until = now + 600;
+            times.clear();
+        }
+    }
+}
+
+/// Game queries (players / progress): answers are shared for a few seconds and at most two are in flight,
+/// so nobody can flood the server's admin command queue.
+#[derive(Default)]
+pub struct QueryGate {
+    answers: HashMap<String, (u64, Value)>,
+    in_flight: usize,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Gate {
+    Cached(Value),
+    Go,
+    Busy,
+}
+
+impl QueryGate {
+    pub fn begin(&mut self, key: &str, now: u64) -> Gate {
+        self.answers.retain(|_, (t, _)| now < *t + 5);
+        if let Some((_, v)) = self.answers.get(key) {
+            return Gate::Cached(v.clone());
+        }
+        if self.in_flight >= 2 {
+            return Gate::Busy;
+        }
+        self.in_flight += 1;
+        Gate::Go
+    }
+    pub fn finish(&mut self, key: &str, answer: Option<Value>, now: u64) {
+        self.in_flight = self.in_flight.saturating_sub(1);
+        if let Some(v) = answer {
+            self.answers.insert(key.to_string(), (now, v));
+        }
+    }
+}
+
+/// Reads one request head (GET only, no body) with an overall deadline, not a per-read one.
+pub fn read_head(stream: &mut TcpStream, deadline: Duration) -> Option<(String, String)> {
+    use std::io::Read;
+    let start = std::time::Instant::now();
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 2048];
+    loop {
+        let left = deadline.checked_sub(start.elapsed())?;
+        stream.set_read_timeout(Some(left.max(Duration::from_millis(1)))).ok()?;
+        let n = stream.read(&mut tmp).ok()?;
+        if n == 0 {
+            return None;
+        }
+        buf.extend_from_slice(&tmp[..n]);
+        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+        if buf.len() > 8192 {
+            return None;
+        }
+    }
+    let text = String::from_utf8_lossy(&buf);
+    let mut first = text.lines().next()?.split_whitespace();
+    Some((first.next()?.to_string(), first.next()?.to_string()))
+}
+
 // ================================================================ live map server (TCP map port)
 
 const MAX_STREAMS: usize = 20;
@@ -168,6 +288,42 @@ pub struct LiveState {
     info: Option<(u64, Value)>,
     players: Option<(u64, Value)>,
     online_keys: Vec<String>,
+    key_cache: Option<(String, String, String)>, // (salt, password, key): PBKDF2 runs once per password
+    ip_limit: IpLimit,
+    auth_guard: AuthGuard,
+    gate: QueryGate,
+    config: Option<(std::time::Instant, Value)>,
+}
+
+const MAX_CONNECTIONS: usize = 64;
+static CONNECTIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// The server config, re-read at most every 5 s (every request needs it).
+fn config(s: &Shared) -> Value {
+    let mut live = s.live.lock().unwrap();
+    if let Some((t, v)) = &live.config {
+        if t.elapsed() < Duration::from_secs(5) {
+            return v.clone();
+        }
+    }
+    let v = load_config(&s.paths);
+    live.config = Some((std::time::Instant::now(), v.clone()));
+    v
+}
+
+/// A player list / progress answer through the gate: shared for 5 s, at most two game queries at once.
+fn ask(s: &Shared, cmd: &str, arg: &str) -> Result<Value, String> {
+    let key = format!("{cmd} {arg}");
+    let gate = s.live.lock().unwrap().gate.begin(&key, now_secs());
+    match gate {
+        Gate::Cached(v) => Ok(v),
+        Gate::Busy => Err("busy".into()),
+        Gate::Go => {
+            let r = query(s, cmd, arg);
+            s.live.lock().unwrap().gate.finish(&key, r.as_ref().ok().cloned(), now_secs());
+            r
+        }
+    }
 }
 
 /// The TCP port the live map listens on: LiveMap.Port, or the game's port number when 0.
@@ -255,6 +411,17 @@ fn query(s: &Shared, cmd: &str, arg: &str) -> Result<Value, String> {
     Ok(v)
 }
 
+fn cached_map_key(s: &Shared, salt: &str, password: &str) -> String {
+    if let Some((cs, cp, k)) = &s.live.lock().unwrap().key_cache {
+        if cs == salt && cp == password {
+            return k.clone();
+        }
+    }
+    let k = map_key(salt, password);
+    s.live.lock().unwrap().key_cache = Some((salt.to_string(), password.to_string(), k.clone()));
+    k
+}
+
 fn cached(s: &Shared, which: &str, max_age: u64) -> Option<Value> {
     let live = s.live.lock().unwrap();
     let slot = if which == "info" { &live.info } else { &live.players };
@@ -318,11 +485,15 @@ pub fn clean_key(k: &str) -> String {
 }
 
 fn handle(mut stream: TcpStream, s: Shared) {
-    let Some((method, path, _headers, _body)) = read_request(&mut stream) else { return };
+    let ip = stream.peer_addr().map(|a| a.ip().to_canonical().to_string()).unwrap_or_default();
+    let Some((method, path)) = read_head(&mut stream, Duration::from_secs(5)) else { return };
     if method != "GET" {
         return http_response(&mut stream, 404, &json!({ "error": "not found" }));
     }
-    let cfg = load_config(&s.paths);
+    if !s.live.lock().unwrap().ip_limit.allow(&ip, now_secs(), 120) {
+        return http_response(&mut stream, 429, &json!({ "error": "rate-limited" }));
+    }
+    let cfg = config(&s);
     if !cfg["LiveMap"]["Enabled"].as_bool().unwrap_or(true) {
         return http_response(&mut stream, 404, &json!({ "error": "live map is turned off" }));
     }
@@ -333,15 +504,24 @@ fn handle(mut stream: TcpStream, s: Shared) {
     let now = now_secs();
     match route.as_str() {
         "/map/hello" => {
-            let nonce = s.live.lock().unwrap().auth.new_nonce(now);
+            let Some(nonce) = s.live.lock().unwrap().auth.new_nonce(now) else {
+                return http_response(&mut stream, 503, &json!({ "error": "busy" }));
+            };
             http_response(&mut stream, 200, &json!({
                 "app": "WSDS", "version": VERSION, "name": cfg["WorldName"],
                 "passwordRequired": !password.is_empty(), "salt": salt, "nonce": nonce,
             }));
         }
         "/map/auth" => {
-            let key = (!password.is_empty()).then(|| derive_key(&salt, &password));
+            if s.live.lock().unwrap().auth_guard.blocked(&ip, now) {
+                thread::sleep(Duration::from_millis(400));
+                return http_response(&mut stream, 401, &json!({ "error": "too many wrong passwords - try again in 10 minutes" }));
+            }
+            let key = (!password.is_empty()).then(|| cached_map_key(&s, &salt, &password));
             let r = s.live.lock().unwrap().auth.redeem(&arg("nonce"), &arg("proof"), key.as_deref(), now);
+            if r == Err(AuthError::WrongPassword) {
+                s.live.lock().unwrap().auth_guard.failed(&ip, now);
+            }
             match r {
                 Ok(token) => http_response(&mut stream, 200, &json!({ "ok": true, "token": token })),
                 Err(e) => {
@@ -359,8 +539,8 @@ fn handle(mut stream: TcpStream, s: Shared) {
                 return http_response(&mut stream, 503, &json!({ "error": "server-offline" }));
             }
             let answer = match route.as_str() {
-                "/map/players" => query(&s, "mapplayers", ""),
-                "/map/progress" => query(&s, "mapprogress", &clean_key(&arg("key"))),
+                "/map/players" => ask(&s, "mapplayers", ""),
+                "/map/progress" => ask(&s, "mapprogress", &clean_key(&arg("key"))),
                 _ => return serve_stream(stream, s),
             };
             match answer {
@@ -449,7 +629,10 @@ pub fn start(sink: Sink, s: Shared) {
             };
             if let Some(cmd) = renew {
                 if game_running(&s) {
-                    s.inner.lock().unwrap().queue.push_back(cmd);
+                    let mut inner = s.inner.lock().unwrap();
+                    if !inner.queue.iter().any(|c| c.starts_with("mapwatch")) {
+                        inner.queue.push_back(cmd);
+                    }
                 }
             }
         });
@@ -471,8 +654,16 @@ pub fn start(sink: Sink, s: Shared) {
                         info(&sink, &s, &format!("Live map listening on TCP port {port} (wsdsmaps.com)"));
                     }
                     for stream in listener.incoming().flatten() {
+                        use std::sync::atomic::Ordering;
+                        if CONNECTIONS.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+                            CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
+                            continue; // dropped: too many open connections
+                        }
                         let s = s.clone();
-                        thread::spawn(move || handle(stream, s));
+                        thread::spawn(move || {
+                            handle(stream, s);
+                            CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
+                        });
                     }
                 }
                 Err(e) => {
@@ -488,25 +679,26 @@ pub fn start(sink: Sink, s: Shared) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::derive_key;
 
     #[test]
     fn proof_roundtrip() {
-        let key = derive_key("s", "pw");
+        let key = map_key("s", "pw");
         let p = proof(&key, "n1");
         assert_eq!(p.len(), 64);
         assert!(proof_ok(&key, "n1", &p));
-        assert!(!proof_ok(&derive_key("s", "wrong"), "n1", &p));
+        assert!(!proof_ok(&map_key("s", "wrong"), "n1", &p));
         assert!(!proof_ok(&key, "n2", &p));
-        // Fixed vector (computed independently with Python's hmac), shared with the site's proof.js test.
-        assert_eq!(p, "961b19b498d944ab88770ebd2088337283fe706e98043675a84f128593af1f9c");
+        // Fixed vectors (Python: hmac(pbkdf2_hmac('sha256', pw, salt, 100000), nonce)), shared with proof.js.
+        assert_eq!(key, "6b76348709a74cd61e480786a42daf9a9f0b2d000a8114257b3b64bbe04187f9");
+        assert_eq!(p, "e94107061d322c0216b50df904172280c69e8add02acc7c12887d682d68e8bcb");
+        assert_eq!(proof(&map_key("s", "p\u{e4}ss"), "n1"), "b5d9180e7e538e3940c9f50fc1ca8b3d66fb57ab6a8f137491f7ef5f2c5c8518");
     }
 
     #[test]
     fn nonce_single_use() {
         let mut a = Auth::default();
-        let key = derive_key("s", "pw");
-        let n = a.new_nonce(100);
+        let key = map_key("s", "pw");
+        let n = a.new_nonce(100).unwrap();
         let p = proof(&key, &n);
         assert!(a.redeem(&n, &p, Some(&key), 101).is_ok());
         assert_eq!(a.redeem(&n, &p, Some(&key), 102), Err(AuthError::BadNonce));
@@ -515,24 +707,24 @@ mod tests {
     #[test]
     fn nonce_expires() {
         let mut a = Auth::default();
-        let key = derive_key("s", "pw");
-        let n = a.new_nonce(100);
+        let key = map_key("s", "pw");
+        let n = a.new_nonce(100).unwrap();
         assert_eq!(a.redeem(&n, &proof(&key, &n), Some(&key), 161), Err(AuthError::BadNonce));
     }
 
     #[test]
     fn wrong_password_is_refused_and_burns_the_nonce() {
         let mut a = Auth::default();
-        let key = derive_key("s", "pw");
-        let n = a.new_nonce(100);
-        assert_eq!(a.redeem(&n, &proof(&derive_key("s", "nope"), &n), Some(&key), 101), Err(AuthError::WrongPassword));
+        let key = map_key("s", "pw");
+        let n = a.new_nonce(100).unwrap();
+        assert_eq!(a.redeem(&n, &proof(&map_key("s", "nope"), &n), Some(&key), 101), Err(AuthError::WrongPassword));
         assert_eq!(a.redeem(&n, &proof(&key, &n), Some(&key), 102), Err(AuthError::BadNonce));
     }
 
     #[test]
     fn no_password_needs_no_proof() {
         let mut a = Auth::default();
-        let n = a.new_nonce(100);
+        let n = a.new_nonce(100).unwrap();
         let t = a.redeem(&n, "", None, 101).unwrap();
         assert!(a.token_valid(&t, 102));
     }
@@ -540,7 +732,7 @@ mod tests {
     #[test]
     fn token_slides_then_expires() {
         let mut a = Auth::default();
-        let n = a.new_nonce(0);
+        let n = a.new_nonce(0).unwrap();
         let t = a.redeem(&n, "", None, 0).unwrap();
         assert!(a.token_valid(&t, 500)); // renews to 1100
         assert!(a.token_valid(&t, 1000));
@@ -628,5 +820,89 @@ mod tests {
         assert_eq!(map_port(&json!({ "Port": 7787, "LiveMap": { "Port": 0 } })), 7787);
         assert_eq!(map_port(&json!({ "Port": 7787, "LiveMap": { "Port": 7790 } })), 7790);
         assert_eq!(map_port(&json!({ "Port": 7787 })), 7787);
+    }
+
+    #[test]
+    fn ip_limit_counts_per_minute() {
+        let mut l = IpLimit::default();
+        for _ in 0..3 {
+            assert!(l.allow("1.2.3.4", 100, 3));
+        }
+        assert!(!l.allow("1.2.3.4", 110, 3));
+        assert!(l.allow("5.6.7.8", 110, 3));
+        assert!(l.allow("1.2.3.4", 161, 3));
+    }
+
+    #[test]
+    fn auth_guard_locks_out_after_five_wrong_passwords() {
+        let mut g = AuthGuard::default();
+        for t in 0..4 {
+            g.failed("1.2.3.4", 100 + t);
+        }
+        assert!(!g.blocked("1.2.3.4", 105));
+        g.failed("1.2.3.4", 106);
+        assert!(g.blocked("1.2.3.4", 107));
+        assert!(!g.blocked("9.9.9.9", 107));
+        assert!(g.blocked("1.2.3.4", 106 + 599));
+        assert!(!g.blocked("1.2.3.4", 106 + 601));
+    }
+
+    #[test]
+    fn query_gate_shares_answers_and_limits_in_flight() {
+        let mut q = QueryGate::default();
+        assert_eq!(q.begin("players", 100), Gate::Go);
+        assert_eq!(q.begin("progress k1", 100), Gate::Go);
+        assert_eq!(q.begin("progress k2", 100), Gate::Busy);
+        q.finish("players", Some(json!({"players": []})), 101);
+        assert_eq!(q.begin("players", 103), Gate::Cached(json!({"players": []})));
+        assert_eq!(q.begin("progress k2", 103), Gate::Go);
+        q.finish("progress k1", None, 104);
+        q.finish("progress k2", None, 104);
+        assert_eq!(q.begin("players", 107), Gate::Go); // older than 5 s
+    }
+
+    #[test]
+    fn nonces_are_capped() {
+        let mut a = Auth::default();
+        for _ in 0..MAX_NONCES {
+            assert!(a.new_nonce(100).is_some());
+        }
+        assert!(a.new_nonce(100).is_none());
+        assert!(a.new_nonce(200).is_some()); // old ones expired
+    }
+
+    #[test]
+    fn slow_senders_are_cut_off() {
+        use std::io::Read as _;
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        let t = thread::spawn(move || {
+            let mut c = TcpStream::connect(addr).unwrap();
+            for _ in 0..20 {
+                if c.write_all(b"G").is_err() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(200));
+            }
+            let mut b = [0u8; 1];
+            let _ = c.read(&mut b);
+        });
+        let (mut srv, _) = l.accept().unwrap();
+        let t0 = std::time::Instant::now();
+        assert_eq!(read_head(&mut srv, Duration::from_millis(800)), None);
+        assert!(t0.elapsed() < Duration::from_millis(1500));
+        drop(srv);
+        t.join().unwrap();
+
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        let t = thread::spawn(move || {
+            let mut c = TcpStream::connect(addr).unwrap();
+            c.write_all(b"GET /map/hello?x=1 HTTP/1.1\r\nHost: a\r\n\r\n").unwrap();
+            thread::sleep(Duration::from_millis(200));
+        });
+        let (mut srv, _) = l.accept().unwrap();
+        assert_eq!(read_head(&mut srv, Duration::from_secs(2)), Some(("GET".into(), "/map/hello?x=1".into())));
+        t.join().unwrap();
     }
 }

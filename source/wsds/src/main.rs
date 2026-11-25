@@ -31,7 +31,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const VERSION: &str = "0.0.44";
+const VERSION: &str = "0.0.45";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config
@@ -911,7 +911,7 @@ fn tail_log(sink: Sink, s: Shared, path: PathBuf, gen: u64) {
     let Ok(file) = fs::File::open(&path) else { return };
     let mut reader = BufReader::new(file);
     let mut pos: u64 = 0;
-    let mut partial = String::new();
+    let mut partial: Vec<u8> = Vec::new();
     let mut ready_sent = false;
     loop {
         let running = {
@@ -923,10 +923,7 @@ fn tail_log(sink: Sink, s: Shared, path: PathBuf, gen: u64) {
         let mut buf = Vec::new();
         if reader.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
             pos += buf.len() as u64;
-            partial.push_str(&String::from_utf8_lossy(&buf));
-            while let Some(nl) = partial.find('\n') {
-                let line: String = partial[..nl].trim_end_matches('\r').to_string();
-                partial.drain(..=nl);
+            for line in take_lines(&mut partial, &buf) {
                 if handle_line(&sink, &s, &line, &mut ready_sent) {
                     batch.push(line);
                 }
@@ -945,6 +942,37 @@ fn tail_log(sink: Sink, s: Shared, path: PathBuf, gen: u64) {
             return;
         }
         thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// Appends newly read log bytes and returns the complete lines (decoded per line, so a character split
+/// across two reads stays intact). Incomplete trailing bytes stay in `partial`.
+fn take_lines(partial: &mut Vec<u8>, new: &[u8]) -> Vec<String> {
+    partial.extend_from_slice(new);
+    let mut lines = Vec::new();
+    while let Some(nl) = partial.iter().position(|&b| b == b'\n') {
+        let raw: Vec<u8> = partial.drain(..=nl).collect();
+        let text = String::from_utf8_lossy(&raw[..raw.len() - 1]);
+        lines.push(text.trim_end_matches('\r').to_string());
+    }
+    lines
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::take_lines;
+
+    #[test]
+    fn a_character_split_between_reads_survives() {
+        let line = "WSDS: [WSDS-MAP] r 1/1 {\"n\":\"B\u{f6}b \u{1F600}\"}\r\n".as_bytes().to_vec();
+        let cut = line.iter().position(|&b| b == 0xF0).unwrap() + 2; // inside the 4-byte emoji
+        let mut partial = Vec::new();
+        assert!(take_lines(&mut partial, &line[..cut]).is_empty());
+        let lines = take_lines(&mut partial, &line[cut..]);
+        assert_eq!(lines, vec!["WSDS: [WSDS-MAP] r 1/1 {\"n\":\"B\u{f6}b \u{1F600}\"}".to_string()]);
+        assert!(partial.is_empty());
+        assert_eq!(take_lines(&mut partial, b"a\nb\n\nc"), vec!["a".to_string(), "b".to_string(), String::new()]);
+        assert_eq!(partial, b"c");
     }
 }
 

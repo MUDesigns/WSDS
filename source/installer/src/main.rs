@@ -554,6 +554,9 @@ fn do_install(app: &AppHandle, opts: &Value) -> Result<Value, String> {
         let _ = run_hidden("netsh", &["advfirewall", "firewall", "delete", "rule", "name=WSDS Remote Control"]);
         run_hidden("netsh", &["advfirewall", "firewall", "add", "rule", "name=WSDS Game", "dir=in", "action=allow", "protocol=UDP", &format!("localport={game_port}")]).map_err(|e| e.to_string())?;
         progress(app, &format!("Allowed UDP {game_port} (players)."));
+        let _ = run_hidden("netsh", &["advfirewall", "firewall", "delete", "rule", "name=WSDS Live Map"]);
+        run_hidden("netsh", &["advfirewall", "firewall", "add", "rule", "name=WSDS Live Map", "dir=in", "action=allow", "protocol=TCP", &format!("localport={game_port}")]).map_err(|e| e.to_string())?;
+        progress(app, &format!("Allowed TCP {game_port} (live map on wsdsmaps.com)."));
         if !remote_pw.is_empty() {
             run_hidden("netsh", &["advfirewall", "firewall", "add", "rule", "name=WSDS Remote Control", "dir=in", "action=allow", "protocol=TCP", &format!("localport={remote_port}")]).map_err(|e| e.to_string())?;
             progress(app, &format!("Allowed TCP {remote_port} (remote control)."));
@@ -598,6 +601,7 @@ fn uninstall(app: AppHandle, path: String) -> Result<(), String> {
                 let _ = ps("Stop-ScheduledTask -TaskName 'WSDS' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'WSDS' -Confirm:$false -ErrorAction SilentlyContinue; Get-Process WSDS -ErrorAction SilentlyContinue | Stop-Process -Force");
                 let _ = run_hidden("netsh", &["advfirewall", "firewall", "delete", "rule", "name=WSDS Game"]);
                 let _ = run_hidden("netsh", &["advfirewall", "firewall", "delete", "rule", "name=WSDS Remote Control"]);
+                let _ = run_hidden("netsh", &["advfirewall", "firewall", "delete", "rule", "name=WSDS Live Map"]);
                 let _ = ps("foreach ($d in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('CommonPrograms'))) { Remove-Item (Join-Path $d 'WSDS.lnk') -ErrorAction SilentlyContinue }");
                 thread::sleep(Duration::from_secs(3));
             }
