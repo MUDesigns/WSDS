@@ -13,6 +13,8 @@
 //   key = SHA256("<salt>:<password>")  (only the derived key is stored, never the password)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod livemap;
+
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
