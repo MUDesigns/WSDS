@@ -301,16 +301,27 @@ function playerAction(act, p) {
   if (act === "xp") return modal(`Give XP to ${p.name}`, `<label class="field"><span class="lbl">Experience</span><input type="number" id="mVal" value="1000" min="1"></label>`,
     [["Give", "", async () => { const n = Number($("#mVal").value) || 0; await adminCmd(`xp ${who} ${n}`); activity(`Gave ${p.name} ${n} XP`, "ok"); }], ["Cancel", "dark"]]);
   if (act === "tp") {
+    if (!p.spawned) return toast(`${p.name} is still joining. Try again once they are in the world.`, true);
     const others = players.filter((o) => o !== p && o.spawned);
-    if (!others.length) return toast("There is no other spawned player to teleport to.", true);
-    return modal(`Teleport ${p.name}`, `<label class="field"><span class="lbl">To player</span><select id="mVal">${others.map((o) => `<option value="${esc(o.key || o.name)}">${esc(o.name)}</option>`).join("")}</select></label>
-      <label class="toggle"><input type="checkbox" id="mRev"><span class="knob"></span><span class="lbl">Bring that player to ${esc(p.name)} instead</span></label>`,
+    const toPlayer = others.length ? `<option value="player">To another player</option>` : "";
+    return modal(`Teleport ${p.name}`, `<label class="field"><span class="lbl">Where</span><select id="mMode">${toPlayer}<option value="pos">To a position (x y z)</option></select></label>
+      <div id="mPlayerBox"><label class="field"><span class="lbl">Player</span><select id="mVal">${others.map((o) => `<option value="${esc(o.key || o.name)}">${esc(o.name)}</option>`).join("")}</select></label>
+      <label class="toggle"><input type="checkbox" id="mRev"><span class="knob"></span><span class="lbl">Bring that player to ${esc(p.name)} instead</span></label></div>
+      <div id="mPosBox"><label class="field"><span class="lbl">Position</span><input type="text" id="mPos" value="${esc(`${p.x} ${p.y} ${p.z}`)}"><span class="help">Positions are shown on the Players page. The player is placed there, so add a little height (z) to avoid ending up inside the ground.</span></label></div>`,
       [["Teleport", "", async () => {
-        const target = q($("#mVal").value);
-        const rev = $("#mRev").checked;
-        await adminCmd(rev ? `tp ${target} ${who}` : `tp ${who} ${target}`);
+        if ($("#mMode").value === "pos") {
+          const xyz = $("#mPos").value.trim().split(/[\s,]+/).map(Number);
+          if (xyz.length !== 3 || xyz.some((n) => !Number.isFinite(n))) { toast("Enter three numbers: x y z", true); return false; }
+          await adminCmd(`tppos ${who} ${xyz.join(" ")}`);
+        } else {
+          const target = q($("#mVal").value);
+          await adminCmd($("#mRev").checked ? `tp ${target} ${who}` : `tp ${who} ${target}`);
+        }
         activity(`Teleport requested`, "ok");
       }], ["Cancel", "dark"]]);
+    const sync = () => { const pos = $("#mMode").value === "pos"; $("#mPosBox").style.display = pos ? "" : "none"; $("#mPlayerBox").style.display = pos ? "none" : ""; };
+    $("#mMode").onchange = sync; sync();
+    return;
   }
   if (act === "msg") return modal(`Message ${p.name}`, `<label class="field"><span class="lbl">Message</span><input type="text" id="mVal"></label>`,
     [["Send", "", async () => { await adminCmd(`msg ${who} ${q($("#mVal").value)}`); }], ["Cancel", "dark"]]);
@@ -514,18 +525,18 @@ async function init() {
   $("#bRestart").onclick = () => call("server_restart").then(() => activity("Server restarting"));
   $("#bSave").onclick = () => call("server_save").then(() => activity("Saving world", "ok"));
   $("#bAnnounce").onclick = async () => { const m = $("#announce").value.trim(); if (!m) return; await adminCmd(`say ${q(m)}`); $("#announce").value = ""; activity(`Announced: ${m}`, "ok"); };
-  $("#announce").onkeydown = (e) => e.key === "Enter" && $("#bAnnounce").click();
+  $("#announce").onkeydown = (e) => { if (e.key === "Enter") $("#bAnnounce").click(); };
   const fmtHour = (h) => `${String(Math.floor(h)).padStart(2, "0")}:${h % 1 ? "30" : "00"}`;
   $("#timeSlider").oninput = () => ($("#timeVal").textContent = fmtHour(Number($("#timeSlider").value)));
   $("#bTime").onclick = async () => { const h = Number($("#timeSlider").value); await adminCmd(`time ${h}`); activity(`Time of day set to ${fmtHour(h)}`, "ok"); };
   $$("[data-open]").forEach((b) => (b.onclick = () => invoke("open_folder", { which: b.dataset.open }).catch((e) => toast(String(e), true))));
   $("#playerRows").onclick = (e) => { const b = e.target.closest("[data-act]"); if (b) playerAction(b.dataset.act, players[Number(b.dataset.i)]); };
   $("#cSend").onclick = runConsoleCommand;
-  $("#cInput").onkeydown = (e) => e.key === "Enter" && runConsoleCommand();
+  $("#cInput").onkeydown = (e) => { if (e.key === "Enter") runConsoleCommand(); };
   $("#cFilter").oninput = redrawConsole; $("#cMode").onchange = redrawConsole;
   $("#cClear").onclick = () => { consoleLines = []; $("#console").innerHTML = ""; };
   $("#sSave").onclick = saveSettings;
-  $("#overlay").onclick = (e) => e.target.id === "overlay" && closeModal();
+  $("#overlay").onclick = (e) => { if (e.target.id === "overlay") closeModal(); };
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeModal();
     if (e.key === "Enter" && $("#wizard").classList.contains("show") && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) wizardNext(1);

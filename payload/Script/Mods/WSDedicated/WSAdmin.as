@@ -109,6 +109,22 @@ namespace WSAdmin
         return nullptr;
     }
 
+    // Teleports like the game's own waystones: the player sees a loading screen, the destination loads
+    // first and the player is placed on safe ground near it. A plain teleport could drop them into a part
+    // of the world the server has not loaded yet.
+    bool AdminTeleport(APlayerCharacter P, const FVector& Dest, const FRotator& Rotation)
+    {
+        if (P.TeleportComp != nullptr)
+        {
+            FTeleportRequest Request = Teleport::AtFeet(Dest);
+            Request.Rotation = Rotation;
+            Request.bUseActorRotation = false;
+            P.TeleportComp.Request(Request);
+            return true;
+        }
+        return P.HercTeleportTo(Dest, Rotation, false, true);
+    }
+
     APlayerController FindController(const FString& NameOrKey)
     {
         const FString Wanted = NameOrKey.ToLower();
@@ -322,7 +338,7 @@ namespace WSAdmin
             APlayerCharacter Target = FindPlayer(Args[2]);
             if (P == nullptr || Target == nullptr) { Result(false, Cmd, "both players must be spawned"); return; }
             const FVector Dest = Target.GetActorLocation() + Target.GetActorForwardVector() * -150 + FVector(0, 0, 50);
-            const bool bOk = P.HercTeleportTo(Dest, Target.GetActorRotation(), false, false) || P.HercTeleportTo(Dest, Target.GetActorRotation(), false, true);
+            const bool bOk = AdminTeleport(P, Dest, Target.GetActorRotation());
             Result(bOk, Cmd, f"teleported {WSCoop::PlayerName(P)} to {WSCoop::PlayerName(Target)}");
         }
         else if (Cmd == "tppos" && Args.Num() >= 5)
@@ -330,7 +346,7 @@ namespace WSAdmin
             APlayerCharacter P = FindPlayer(Args[1]);
             if (P == nullptr) { Result(false, Cmd, f"no spawned player '{Args[1]}'"); return; }
             const FVector Dest(String::Conv_StringToDouble(Args[2]), String::Conv_StringToDouble(Args[3]), String::Conv_StringToDouble(Args[4]));
-            const bool bOk = P.HercTeleportTo(Dest, P.GetActorRotation(), false, true);
+            const bool bOk = AdminTeleport(P, Dest, P.GetActorRotation());
             Result(bOk, Cmd, f"teleported {WSCoop::PlayerName(P)} to {int(Dest.X)} {int(Dest.Y)} {int(Dest.Z)}");
         }
         else if (Cmd == "heal" && Args.Num() >= 2)
