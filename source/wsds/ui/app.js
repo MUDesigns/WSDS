@@ -87,6 +87,10 @@ const SCHEMA = [
     { k: "RemoteControl.Enabled", label: "Allow remote control of this server", type: "toggle", help: "Lets WSDS on another PC manage this server (needs the password below)." },
     { k: "RemoteControl.Port", label: "Remote control port (TCP)", type: "number", min: 1, max: 65535 },
   ], extra: () => `<label class="field"><span class="lbl">Set remote control password</span><input type="password" id="rcPassword" placeholder="${config.RemoteControl?.Key === "set" ? "A password is set - type a new one to change it" : "No password set yet"}"><span class="help">Only a salted hash is stored. Restart WSDS after enabling remote control.</span></label>` },
+  { section: "Live map", step: null, fields: [
+    { k: "LiveMap.Enabled", label: "Live map on wsdsmaps.com", type: "toggle", help: "Anyone with your server's join details (and join password, if set) can open a live map at wsdsmaps.com: where players are, and each player's chests, satchels and quests. The server only sends positions while someone is watching." },
+    { k: "LiveMap.Port", label: "Live map port (TCP)", type: "number", min: 0, max: 65535, help: "0 = the same number as the game port. Allow this TCP port in your router / host firewall as well as the game's UDP port. Restart WSDS after changing." },
+  ]},
   { section: "Advanced", step: null, fields: [
     { k: "ConsoleVerbosity", label: "Console default view", type: "select", options: [["important", "Important lines"], ["all", "Everything"]] },
     { k: "ServerDataDir", label: "Server data folder", type: "text", help: "Saves, logs and server config. Relative to the mod folder. Keep it on the game's drive." },
@@ -394,11 +398,50 @@ async function runConsoleCommand() {
 function showPage(name) {
   $$(".menu a").forEach((a) => a.classList.toggle("active", a.dataset.page === name));
   $$(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + name));
+  if (name === "map") mountMap(); else unmountMap();
   if (name === "console") $("#console").scrollTop = $("#console").scrollHeight;
 }
 
 function applyState(st) { players = st.players || []; maxPlayers = st.maxPlayers || 0; renderPlayers(); }
 function showResult(r) { activity(`${r.cmd}: ${r.msg}`, r.ok ? "ok" : "bad"); if (!r.ok) toast(r.msg, true); }
+
+// ---------------------------------------------------------------- Map tab (wsdsmaps.com, embedded)
+// The page is only loaded while the tab is open, so the server sends positions only while someone looks.
+const MAP_ORIGIN = (() => { try { return localStorage.getItem("wsdsMapOrigin") || "https://wsdsmaps.com"; } catch { return "https://wsdsmaps.com"; } })();
+let mapFrame = null;
+function mapTarget() {
+  const port = Number(config.LiveMap?.Port) || Number(config.Port) || 7777;
+  if (conn.mode === "local" || conn.id === "local-service") return { server: `@self:${port}`, label: `this PC, TCP ${port}` };
+  const r = remotes.find((x) => x.id === conn.id);
+  return r ? { server: `${r.host}:${port}`, label: `${r.host}, TCP ${port}` } : null;
+}
+function postMapTarget() {
+  if (!mapFrame || !mapFrame.contentWindow) return;
+  const t = mapTarget();
+  if (!t) return;
+  mapFrame.contentWindow.postMessage({ type: "wsds-connect", server: t.server, password: config.Password || "" }, MAP_ORIGIN);
+}
+function mountMap() {
+  const enabled = config.LiveMap?.Enabled !== false;
+  const t = mapTarget();
+  $("#mapInfo").textContent = enabled && t ? `Showing ${conn.name || "this server"} (${t.label})` : "";
+  $("#mapOff").style.display = enabled ? "none" : "";
+  $("#mapOff").textContent = enabled ? "" : "The live map is turned off for this server (Settings > Live map).";
+  if (!enabled) return unmountMap();
+  if (!mapFrame) {
+    mapFrame = document.createElement("iframe");
+    mapFrame.src = `${MAP_ORIGIN}/?embed=1`;
+    mapFrame.title = "Live map";
+    mapFrame.addEventListener("load", () => setTimeout(postMapTarget, 300));
+    $("#mapHost").replaceChildren(mapFrame);
+  } else postMapTarget();
+}
+function unmountMap() {
+  if (mapFrame) { mapFrame.remove(); mapFrame = null; }
+}
+window.addEventListener("message", (e) => {
+  if (e.origin === MAP_ORIGIN && e.data?.type === "wsdsmaps-ready" && mapFrame && e.source === mapFrame.contentWindow) postMapTarget();
+});
 
 // ---------------------------------------------------------------- connections (this PC / remote servers)
 let remotes = [];
@@ -428,6 +471,7 @@ async function loadConnection() {
   }
   renderSettings(); renderPlayers(); renderBans(); refreshHeader();
   refreshUpdate(false);
+  if ($("#page-map").classList.contains("active")) mountMap();
 }
 async function onPickServer() {
   const v = $("#serverPick").value;

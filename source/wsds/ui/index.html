@@ -23,6 +23,7 @@
     <nav class="menu">
       <a data-page="dashboard" class="active">Dashboard</a>
       <a data-page="players">Players <span class="count" id="navPlayers">0</span></a>
+      <a data-page="map">Map</a>
       <a data-page="console">Console</a>
       <a data-page="bans">Bans</a>
       <a data-page="settings">Settings</a>
@@ -97,6 +98,15 @@
             <tbody id="playerRows"></tbody>
           </table>
           <div class="empty" id="playersEmpty">Nobody is online. Players appear here as soon as they join.</div>
+        </div>
+      </section>
+
+      <!-- ================= Map (wsdsmaps.com) ================= -->
+      <section id="page-map" class="page">
+        <div class="frame fill mapframe"><i class="c3"></i><i class="c4"></i>
+          <div class="row between"><h2>Live map</h2><span class="muted small" id="mapInfo"></span></div>
+          <div id="mapOff" class="empty" style="display:none"></div>
+          <div id="mapHost" class="maphost"></div>
         </div>
       </section>
 

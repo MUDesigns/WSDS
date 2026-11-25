@@ -73,6 +73,7 @@ fn default_config() -> Value {
         "ServerDataDir": "ServerData",
         "ExtraArgs": "",
         "RemoteControl": { "Enabled": false, "Port": 7780, "Salt": "", "Key": "" },
+        "LiveMap": { "Enabled": true, "Port": 0, "Salt": "" },
         "SteamCmd": { "Path": "", "User": "" },
         "AutoUpdate": { "Enabled": true, "CheckHours": 6, "OnlyWhenEmpty": true, "Repo": "MUDesigns/WSDS", "LastApplied": "" },
         "Gameplay": {
@@ -262,6 +263,7 @@ struct Inner {
 struct App {
     paths: Paths,
     inner: Mutex<Inner>,
+    live: Mutex<livemap::LiveState>,
     headless: bool,
 }
 
@@ -947,8 +949,12 @@ fn tail_log(sink: Sink, s: Shared, path: PathBuf, gen: u64) {
 }
 
 fn handle_line(sink: &Sink, s: &Shared, line: &str, ready_sent: &mut bool) -> bool {
+    if livemap::on_log_line(s, line) {
+        return false;
+    }
     if let Some(i) = line.find("[WSDS-STATE] ") {
         if let Ok(v) = serde_json::from_str::<Value>(&line[i + 13..]) {
+            livemap::on_state(s, &v);
             s.inner.lock().unwrap().last_state = Some(v.clone());
             sink.emit("state", v);
         }
@@ -1595,6 +1601,7 @@ fn run_headless(shared: Shared) {
         thread::spawn(move || command_pump(sink, s));
     }
     start_control_server(sink.clone(), shared.clone());
+    livemap::start(sink.clone(), shared.clone());
     {
         let (sink, s) = (sink.clone(), shared.clone());
         thread::spawn(move || update_loop(sink, s));
@@ -1629,6 +1636,7 @@ fn main() {
     let shared: Shared = Arc::new(App {
         paths: Paths { root: find_mod_root() },
         inner: Mutex::new(Inner { status: "stopped".into(), ..Default::default() }),
+        live: Mutex::new(Default::default()),
         headless: args.iter().any(|a| a == "--headless"),
     });
 
@@ -1673,6 +1681,7 @@ fn main() {
                 && TcpStream::connect_timeout(&format!("127.0.0.1:{}", cfg["RemoteControl"]["Port"].as_u64().unwrap_or(7780)).parse().unwrap(), Duration::from_millis(300)).is_ok();
             if !service_owns_port {
                 start_control_server(sink.clone(), shared.clone());
+                livemap::start(sink.clone(), shared.clone());
                 {
                     let (sink, s) = (sink.clone(), shared.clone());
                     thread::spawn(move || update_loop(sink, s));
