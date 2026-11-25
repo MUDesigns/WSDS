@@ -1,13 +1,17 @@
 {
  "path": "Core/Game/GameMode.as",
  "vanilla": "5498F36C444AC40EB00BFBF3A1AB1450A4A995978DD51E2B56515659B1D606EF",
- "patched": "62B56D3D659D110ED7875171CCEC6AE90D819317086CA2CE044E1F00E47D1A35",
+ "patched": "C34E749A7608B1DA5A152B9B0169DD1F766EB8445AE3794739E5346692C33FBF",
  "hunks": [
   {
    "at": 51,
    "remove": [],
    "add": [
-    "        WSIdentity::Attach(NewPlayer); // [WSCoop] direct-IP clients report a stable id\r\n"
+    "        WSIdentity::Attach(NewPlayer); // [WSCoop] direct-IP clients report a stable id\r\n",
+    "        // [WSCoop] Headless host: until a joining player has a character, their controller sits at the spawn\r\n",
+    "        // point and the server would stream (load, then unload) the world there for nothing, freezing everyone.\r\n",
+    "        if (WSDS::IsHeadlessHost() && !NewPlayer.IsLocalController())\r\n",
+    "            NewPlayer.bEnableStreamingSource = false;\r\n"
    ]
   },
   {
@@ -51,6 +55,16 @@
     "                        WSDS::Info(f\"Auto-creating default character for '{NewPlayer.PlayerState.GetPlayerName()}' (-WSAutoCreateCharacters)\");\r\n",
     "                        bEnterCharacterCreation = false;\r\n",
     "                    }\r\n"
+   ]
+  },
+  {
+   "at": 117,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] The player has a character now: stream the world around it on the server again.\r\n",
+    "        APlayerController PossessingController = NewPawn != nullptr ? Cast<APlayerController>(NewPawn.Controller) : nullptr;\r\n",
+    "        if (PossessingController != nullptr && !PossessingController.bEnableStreamingSource)\r\n",
+    "            PossessingController.bEnableStreamingSource = true;\r\n"
    ]
   }
  ]

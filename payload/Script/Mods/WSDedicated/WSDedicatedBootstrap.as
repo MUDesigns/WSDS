@@ -214,6 +214,14 @@ class UWSDedicatedBootstrapSubsystem : UScriptWorldSubsystem
         const int ForceGC = Math::Clamp(WSDS::IntParam("WSForceGCAfterStreamOut", 0), 0, 1);
         System::ExecuteConsoleCommand(f"s.ForceGCAfterLevelStreamedOut {ForceGC}");
         WSDS::Info(f"World streaming: block server on slow streaming={BlockOnSlowStreaming}, forced GC after unload={ForceGC}");
+        // Each engine garbage collection pauses the server while it scans every loaded object (about a
+        // second on a small server once players have explored), every 61 s by default. Run it less often.
+        const int GCInterval = Math::Clamp(WSDS::IntParam("WSGCInterval", 300), 30, 3600);
+        System::ExecuteConsoleCommand(f"gc.TimeBetweenPurgingPendingKillObjects {GCInterval}");
+        WSDS::Info(f"Garbage collection every {GCInterval}s");
+        // Diagnostics: -WSLogGC logs how long each engine garbage collection takes.
+        if (System::ParseParam(System::GetCommandLine(), "WSLogGC"))
+            System::ExecuteConsoleCommand("log LogGarbage Verbose");
 
         const int AutoSave = WSDS::IntParam("WSAutoSave", 300);
         System::ExecuteConsoleCommand(f"Herc.SaveGame.AutoSaveTimer {AutoSave}");
