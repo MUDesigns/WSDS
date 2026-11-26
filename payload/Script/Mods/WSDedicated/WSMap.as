@@ -209,7 +209,34 @@ class UWSMapSubsystem : UScriptWorldSubsystem
             const bool bOnline = Online.Contains(Keys[i]);
             Out += (Out.IsEmpty() ? "" : ",") + f"{{\"key\":{WSAdmin::Json(Keys[i])},\"name\":{WSAdmin::Json(Names[i])},\"online\":{JB(bOnline)},\"lastSeen\":{Seen[i]}}}";
         }
-        return f"{{\"players\":[{Out}]}}";
+        return f"{{\"players\":[{Out}],\"pillars\":[{PillarsJson()}]}}";
+    }
+
+    // Flight pillars ("flight towers") and their orbs: world state shared by everyone, so it rides along with
+    // the player list. Orbs are [x, y, z, collected].
+    private FString PillarsJson()
+    {
+        TArray<AFlightPillar> Pillars;
+        GetAllActorsOfClass(Pillars);
+        FString Out;
+        for (AFlightPillar Pillar : Pillars)
+        {
+            if (!IsValid(Pillar))
+                continue;
+            FString Orbs;
+            for (int i = 0; i < Pillar.Orbs.Num(); i++)
+            {
+                const FVector L = Pillar.ActorTransform.TransformPosition(Pillar.Orbs[i].Location);
+                const int Collected = Pillar.ActivatedOrbs.IsValidIndex(i) && Pillar.ActivatedOrbs[i] ? 1 : 0;
+                Orbs += (Orbs.IsEmpty() ? "" : ",") + f"[{int(L.X)},{int(L.Y)},{int(L.Z)},{Collected}]";
+            }
+            const FVector A = Pillar.ActorLocation;
+            Out += (Out.IsEmpty() ? "" : ",")
+                + f"{{\"id\":{WSAdmin::Json(Pillar.GetName().ToString())},\"name\":{WSAdmin::Json(Pillar.PillarName.ToString())},"
+                + f"\"x\":{int(A.X)},\"y\":{int(A.Y)},\"z\":{int(A.Z)},\"dormant\":{JB(Pillar.bDormant)},"
+                + f"\"active\":{JB(Pillar.IsActivated())},\"orbs\":[{Orbs}]}}";
+        }
+        return Out;
     }
 
     private FString ProgressJson(const FString& Key)
