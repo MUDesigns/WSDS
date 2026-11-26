@@ -568,7 +568,7 @@ fn do_install(app: &AppHandle, opts: &Value) -> Result<Value, String> {
         ps(&format!(
             "$a = New-ScheduledTaskAction -Execute '{0}' -Argument '--headless' -WorkingDirectory '{1}';\
              $t = New-ScheduledTaskTrigger -AtStartup;\
-             $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable;\
+             $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Priority 4;\
              $p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;\
              Register-ScheduledTask -TaskName 'WSDS' -Description 'Witchspire Dedicated Server (WSDS)' -Action $a -Trigger $t -Settings $s -Principal $p -Force | Out-Null;\
              Start-ScheduledTask -TaskName 'WSDS'",

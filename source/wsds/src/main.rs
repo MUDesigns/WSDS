@@ -31,6 +31,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
+// The game server runs above normal priority: started by the background service (Task Scheduler's
+// default is below normal) or next to a game on the same PC, it otherwise gets only leftover CPU and hitches.
+const SERVER_CREATION_FLAGS: u32 = CREATE_NO_WINDOW | ABOVE_NORMAL_PRIORITY_CLASS;
 const VERSION: &str = "0.0.45";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
@@ -425,7 +429,7 @@ fn launch(sink: &Sink, s: &Shared) -> Result<(), String> {
     info(sink, s, &format!("Starting '{}' on UDP port {}", cfg["WorldName"].as_str().unwrap_or("server"), cfg["Port"]));
     let child = Command::new(&exe)
         .args(&args)
-        .creation_flags(CREATE_NO_WINDOW)
+        .creation_flags(SERVER_CREATION_FLAGS)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -956,6 +960,24 @@ fn take_lines(partial: &mut Vec<u8>, new: &[u8]) -> Vec<String> {
         lines.push(text.trim_end_matches('\r').to_string());
     }
     lines
+}
+
+#[cfg(test)]
+mod priority_tests {
+    use super::SERVER_CREATION_FLAGS;
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    #[test]
+    fn the_game_server_starts_above_normal_priority() {
+        // A process started with the server's flags reports its own priority class.
+        let out = Command::new("powershell")
+            .args(["-NoProfile", "-Command", "(Get-Process -Id $PID).PriorityClass"])
+            .creation_flags(SERVER_CREATION_FLAGS)
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "AboveNormal");
+    }
 }
 
 #[cfg(test)]
