@@ -35,7 +35,7 @@ const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
 // The game server runs above normal priority: started by the background service (Task Scheduler's
 // default is below normal) or next to a game on the same PC, it otherwise gets only leftover CPU and hitches.
 const SERVER_CREATION_FLAGS: u32 = CREATE_NO_WINDOW | ABOVE_NORMAL_PRIORITY_CLASS;
-const VERSION: &str = "0.0.45";
+const VERSION: &str = "0.0.46";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config
@@ -963,6 +963,24 @@ fn take_lines(partial: &mut Vec<u8>, new: &[u8]) -> Vec<String> {
 }
 
 #[cfg(test)]
+mod command_file_tests {
+    use super::command_file;
+
+    #[test]
+    fn quoted_arguments_reach_the_server_as_double_quotes() {
+        // The server's tokenizer only groups "double quoted" words (player keys and names from the panel).
+        let text = command_file(&["tp \"76561198065002947\" \"Morgana Fey\"".to_string()]);
+        assert_eq!(text, "wsds.c0 \"tp \"76561198065002947\" \"Morgana Fey\"\"\r\nwsds.count 1\r\n");
+    }
+
+    #[test]
+    fn line_breaks_cannot_split_a_command_and_cvars_pass_through() {
+        let text = command_file(&["say \"a\r\nwsds.count 9\"".to_string(), "__cvars__ t.MaxFPS 30; ".to_string(), "save".to_string()]);
+        assert_eq!(text, "wsds.c0 \"say \"a  wsds.count 9\"\"\r\nt.MaxFPS 30\r\nwsds.c1 \"save\"\r\nwsds.count 2\r\n");
+    }
+}
+
+#[cfg(test)]
 mod priority_tests {
     use super::SERVER_CREATION_FLAGS;
     use std::os::windows::process::CommandExt;
@@ -1107,6 +1125,27 @@ fn handle_event(sink: &Sink, s: &Shared, v: &Value) {
 
 // ================================================================ admin command channel
 
+// The command file the server runs with `exec`: each command becomes a console variable (see WSAdmin.as).
+fn command_file(batch: &[String]) -> String {
+    let mut text = String::new();
+    let mut n = 0;
+    for c in batch {
+        if let Some(cvars) = c.strip_prefix("__cvars__ ") {
+            for cv in cvars.split(';').filter(|x| !x.trim().is_empty()) {
+                text.push_str(cv.trim());
+                text.push_str("\r\n");
+            }
+            continue;
+        }
+        // Inner double quotes are kept: the console strips only the outer pair, and the server's tokenizer
+        // needs them to group a quoted player key, name or message. Line breaks would start a new line.
+        text.push_str(&format!("wsds.c{n} \"{}\"\r\n", c.replace(['\r', '\n'], " ")));
+        n += 1;
+    }
+    text.push_str(&format!("wsds.count {n}\r\n"));
+    text
+}
+
 fn command_pump(sink: Sink, s: Shared) {
     loop {
         thread::sleep(Duration::from_millis(400));
@@ -1127,20 +1166,7 @@ fn command_pump(sink: Sink, s: Shared) {
         let cfg = load_config(&s.paths);
         let control = s.paths.control_dir(&cfg);
         let _ = fs::create_dir_all(&control);
-        let mut text = String::new();
-        let mut n = 0;
-        for c in &batch {
-            if let Some(cvars) = c.strip_prefix("__cvars__ ") {
-                for cv in cvars.split(';').filter(|x| !x.trim().is_empty()) {
-                    text.push_str(cv.trim());
-                    text.push_str("\r\n");
-                }
-                continue;
-            }
-            text.push_str(&format!("wsds.c{n} \"{}\"\r\n", c.replace('"', "'")));
-            n += 1;
-        }
-        text.push_str(&format!("wsds.count {n}\r\n"));
+        let text = command_file(&batch);
         if fs::write(control.join("commands.txt"), text).is_err() {
             continue;
         }

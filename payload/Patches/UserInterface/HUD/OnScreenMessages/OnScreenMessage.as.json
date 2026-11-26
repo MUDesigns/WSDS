@@ -1,8 +1,40 @@
 {
  "path": "UserInterface/HUD/OnScreenMessages/OnScreenMessage.as",
  "vanilla": "0C0D5F0094B6C038F6C70E8118CF809C3E463D1EA5C82DB11526776E6D09DECA",
- "patched": "309F42798D6C5464B330385429568949542FD101099C5AF53223D31B1BCE5130",
+ "patched": "1392BE278F42B12CEB8B0FC563AD2539BEA2198A614006E3DFDF7A089EF30095",
  "hunks": [
+  {
+   "at": 142,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] A message is on screen until the switcher is back at index 0: newer messages queue behind\r\n",
+    "        // it instead of replacing it at once (server announcements vanished under the next popup).\r\n",
+    "        if (ActiveIndex != 0)\r\n",
+    "            return;\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 144,
+   "remove": [
+    "\r\n",
+    "        if (ActiveIndex != 0)\r\n",
+    "            return;\r\n"
+   ],
+   "add": []
+  },
+  {
+   "at": 297,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] Already at index 0 (nothing was shown): no change event follows, so move the queue on here.\r\n",
+    "        if (WidgetSwitcher.GetActiveWidgetIndex() == 0)\r\n",
+    "        {\r\n",
+    "            TryConsumeFromQueue();\r\n",
+    "            return;\r\n",
+    "        }\r\n"
+   ]
+  },
   {
    "at": 359,
    "remove": [
