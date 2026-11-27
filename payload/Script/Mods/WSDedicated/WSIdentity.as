@@ -258,6 +258,23 @@ class UWSIdentityComponent : UHercActorComponent
         WSWeaponReroll::ServerReroll(Cast<APlayerController>(Owner), Station);
     }
 
+    // 0.0.54: the player's answer to an offered re-roll (keep the current stats or take the new ones). Named to
+    // sort after every older RPC of this component.
+    UFUNCTION(Server)
+    void WSServerWeaponRerollChoice(bool bTakeNew)
+    {
+        WSWeaponReroll::ServerChoose(Cast<APlayerController>(Owner), bTakeNew);
+    }
+
+    // 0.0.54: shows the rolled stats next to the current ones so the player can choose.
+    UFUNCTION(Client)
+    void WSWeaponRerollOffer(FString Current, FString New)
+    {
+        UWSWorkstationExtras Extras = UWSWorkstationExtras::Get();
+        if (Extras != nullptr)
+            Extras.ShowOffer(Current.Left(1000), New.Left(1000));
+    }
+
     // Why the server is about to disconnect this game (shown on the main menu).
     UFUNCTION(Client)
     void WSClientKickReason(FString Reason)

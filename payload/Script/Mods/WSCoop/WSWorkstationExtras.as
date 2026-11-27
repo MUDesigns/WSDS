@@ -1,9 +1,10 @@
 // WitchspireCoopOverhaul - workstation extras.
 //
 // Weapon re-roll (Coop.WeaponReroll): at the weapon enhancement station (item crafting station), a "Re-roll
-// Stats" button next to Upgrade gives a Master or Grandmaster weapon new random stat lines of the same rarity
-// for 5 Brilliant Spirit Dust (taken from the bag or the hearth's shared storage, like upgrade costs). Common
-// weapons have no stat lines to re-roll.
+// Stats" button next to Upgrade rolls new random stat lines of the same rarity for a Master or Grandmaster weapon
+// for 5 Brilliant Spirit Dust (taken from the bag or the hearth's shared storage, like upgrade costs). The dust is
+// spent as soon as the roll is made; the player then sees the new roll next to the current stats and picks which
+// to keep (closing the choice keeps the current stats). Common weapons have no stat lines to re-roll.
 //
 // Familiar salvage (Coop.FamiliarSalvage): familiars can be put into the salvage station. Salvaging one gives
 // 1 Magick Essence and 2 Spirit Dust per rarity step (Common 1, Rare 2, Epic 3, Legendary 4); the familiar's level
@@ -56,8 +57,13 @@ namespace WSWeaponReroll
 
     FString StatLines(const UItemRuntimeFragment_Rarity Rarity)
     {
+        return EffectLines(Rarity.RarityEffects);
+    }
+
+    FString EffectLines(const TArray<FPassiveEffect>& Effects)
+    {
         FString Out;
-        for (const FPassiveEffect& Effect : Rarity.RarityEffects)
+        for (const FPassiveEffect& Effect : Effects)
         {
             if (!Out.IsEmpty())
                 Out += "\n";
@@ -115,29 +121,83 @@ namespace WSWeaponReroll
         Cost.Tag = Dust();
         Cost.Amount = DustCost;
         Costs.Add(Cost);
+        UWSWorkstationExtras Extras = UWSWorkstationExtras::Get();
+        if (Extras == nullptr)
+            return;
+        // The dust is spent now, whichever roll the player keeps.
         Station.ConsumeUpgradeCosts(Costs);
+
+        FWSPendingReroll Offer;
+        Offer.Weapon = Weapon;
+        Offer.Station = Station;
+        Offer.Rarity = Rarity.GetRarity();
+        Game::GetGameInstance().ItemRaritySettings.RollPassiveEffects(Weapon, Offer.Rarity, Offer.Effects);
+        Extras.SetPending(PC, Offer);
+
+        const FString Current = StatLines(Rarity);
+        const FString New = EffectLines(Offer.Effects);
+        const FString CurrentLine = Current.Replace("\n", "; ");
+        const FString NewLine = New.Replace("\n", "; ");
+        WSCoop::Info(f"Weapon re-roll by {WSCoop::PlayerName(Player)}: {Weapon.GetItemTag()} current [{CurrentLine}], offered [{NewLine}]");
+        if (PC.IsLocalController())
+        {
+            Extras.ShowOffer(Current, New);
+            return;
+        }
+        UWSIdentityComponent Channel = WSIdentity::GetComponent(PC);
+        if (Channel != nullptr)
+            Channel.WSWeaponRerollOffer(Current, New);
+    }
+
+    // The player's answer to the offered roll. Anything other than taking it keeps the current stats.
+    void ServerChoose(APlayerController PC, bool bTakeNew)
+    {
+        UWSWorkstationExtras Extras = UWSWorkstationExtras::Get();
+        if (!System::IsServer() || PC == nullptr || Extras == nullptr)
+            return;
+        FWSPendingReroll Offer;
+        APlayerCharacter Player = Cast<APlayerCharacter>(PC.GetControlledPawn());
+        if (!Extras.TakePending(PC, Offer))
+        {
+            WSCoop::Info(f"Weapon re-roll by {WSCoop::PlayerName(Player)}: answer with no roll waiting (ignored)");
+            return;
+        }
+        if (!bTakeNew)
+        {
+            WSCoop::Info(f"Weapon re-roll by {WSCoop::PlayerName(Player)}: kept the current stats");
+            return;
+        }
+        if (!IsValid(Offer.Weapon) || Player == nullptr)
+            return;
+        UItemRuntimeFragment_Rarity Rarity = Offer.Weapon.GetRuntimeFragment_Rarity();
+        if (Rarity == nullptr || Rarity.GetRarity() != Offer.Rarity)
+        {
+            WSCoop::Notify(Player, "The weapon changed since the roll, so it keeps its current stats.", "Re-roll Stats");
+            return;
+        }
 
         // A weapon in hand has its stat effects active: swap them for the new ones.
         bool bEquipped = false;
         for (UHercEquipmentInstance Equipment : Player.EquipmentComp.GetAllEquippedItems())
         {
-            if (Equipment != nullptr && Equipment.ItemStack == Weapon)
+            if (Equipment != nullptr && Equipment.ItemStack == Offer.Weapon)
                 bEquipped = true;
         }
         if (bEquipped)
             Rarity.RemoveEffects(Player.AbilityComp);
-        const FString Before = StatLines(Rarity);
-        Rarity.SetRarity(Rarity.GetRarity());
+        Rarity.SetRarity(Offer.Rarity, Offer.Effects);
         if (bEquipped)
             Rarity.ApplyEffects(Player.AbilityComp);
 
-        Station.GetItemStackCraftingComponent().MarkItemStackDirty();
-        Station.GetItemStackCraftingComponent().BroadcastItemStackUpdatedEvent();
-        const FString After = StatLines(Rarity);
-        const FString BeforeLine = Before.Replace("\n", "; ");
-        const FString AfterLine = After.Replace("\n", "; ");
-        WSCoop::Info(f"Weapon re-roll by {WSCoop::PlayerName(Player)}: {Weapon.GetItemTag()} [{BeforeLine}] -> [{AfterLine}]");
-        WSCoop::Notify(Player, f"New stats:\n{After}", "Stats Re-rolled");
+        if (IsValid(Offer.Station))
+        {
+            Offer.Station.GetItemStackCraftingComponent().MarkItemStackDirty();
+            Offer.Station.GetItemStackCraftingComponent().BroadcastItemStackUpdatedEvent();
+        }
+        const FString NewStats = StatLines(Rarity);
+        const FString NewLine = NewStats.Replace("\n", "; ");
+        WSCoop::Info(f"Weapon re-roll by {WSCoop::PlayerName(Player)}: took the new stats [{NewLine}]");
+        WSCoop::Notify(Player, f"New stats:\n{NewStats}", "Stats Re-rolled");
     }
 }
 
@@ -237,10 +297,20 @@ namespace WSFamiliarSalvage
     }
 }
 
+// A rolled set of stat lines waiting for the player's choice (server).
+struct FWSPendingReroll
+{
+    UItemStack Weapon;
+    AItemCraftingWorkstation Station;
+    EItemRarity Rarity;
+    TArray<FPassiveEffect> Effects;
+};
+
 UCLASS()
 class UWSWorkstationExtras : UScriptWorldSubsystem
 {
     private TMap<UObject, UFoundationButtonBase> RerollButtons;
+    private TMap<APlayerController, FWSPendingReroll> Pending;
     private UItemCraftingWeaponCustomizationContentWidget PendingWidget;
     private AItemCraftingWorkstation PendingStation;
     private bool bFlagsSet = false;
@@ -374,7 +444,7 @@ class UWSWorkstationExtras : UScriptWorldSubsystem
             return;
         const UItemRuntimeFragment_Rarity Rarity = Weapon.GetRuntimeFragment_Rarity();
         Modal.WSSetTexts(FText::FromString("Re-roll this weapon's stats?"),
-            FText::FromString(f"Costs {WSWeaponReroll::DustCost} Brilliant Spirit Dust (you have {Owned}). The current stat lines are replaced by new random ones of the same rarity:\n{WSWeaponReroll::StatLines(Rarity)}"),
+            FText::FromString(f"Spends {WSWeaponReroll::DustCost} Brilliant Spirit Dust now (you have {Owned}). You then see the new roll and choose to keep it or your current stats. The dust is spent either way.\nCurrent stats:\n{WSWeaponReroll::StatLines(Rarity)}"),
             FText::FromString("Re-roll"), FText::FromString("Cancel"));
         Modal.OnConfirmClickedDelegate.AddUFunction(this, n"Confirmed");
     }
@@ -399,5 +469,103 @@ class UWSWorkstationExtras : UScriptWorldSubsystem
     void TestReroll()
     {
         Confirmed(nullptr);
+    }
+
+    // ---- server: the roll waiting for the player's choice ----
+
+    void SetPending(APlayerController PC, FWSPendingReroll Offer)
+    {
+        // A new roll replaces an unanswered one (that weapon keeps its current stats).
+        Pending.Add(PC, Offer);
+    }
+
+    bool TakePending(APlayerController PC, FWSPendingReroll& Out)
+    {
+        if (!Pending.Find(PC, Out))
+            return false;
+        Pending.Remove(PC);
+        return true;
+    }
+
+    FString PendingText(APlayerController PC)
+    {
+        FWSPendingReroll Offer;
+        return Pending.Find(PC, Offer) ? WSWeaponReroll::EffectLines(Offer.Effects) : "";
+    }
+
+    // ---- client: keep the current stats or take the new roll ----
+
+    private UConfirmModalWidget OfferModal;
+
+    void ShowOffer(FString Current, FString New)
+    {
+        // A newer roll replaces one still on screen (the server already dropped that one).
+        if (IsValid(OfferModal))
+        {
+            UConfirmModalWidget Old = OfferModal;
+            OfferModal = nullptr;
+            Old.DeactivateWidget();
+        }
+        WSCoop::Info("Weapon re-roll: offer shown");
+        if (System::ParseParam(System::GetCommandLine(), "WSRerollTest"))
+            System::SetTimer(this, n"TestTakeNew", 4.0, false); // developer test: take the new roll
+        UClass ModalClass = Cast<UClass>(LoadObject(UClass, WSLuminaryRespec::ConfirmModalClassPath));
+        if (ModalClass == nullptr || Game::GetHUD() == nullptr)
+        {
+            WSCoop::ShowLocalNotice("Stats Re-rolled", f"New roll (not applied):\n{New}");
+            return;
+        }
+        TSubclassOf<UHercActivatableWidget> WidgetClass = ModalClass;
+        OfferModal = Cast<UConfirmModalWidget>(Game::GetHUD().PushWidgetToLayer(WidgetClass, EUILayer::MenuModal));
+        if (OfferModal == nullptr)
+            return;
+        OfferModal.WSSetTexts(FText::FromString("Keep the new roll?"),
+            FText::FromString(f"Current stats:\n{Current}\n\nNew roll:\n{New}\n\nThe {WSWeaponReroll::DustCost} Brilliant Spirit Dust is already spent."),
+            FText::FromString("Take New Roll"), FText::FromString("Keep Current"));
+        OfferModal.OnConfirmClickedDelegate.AddUFunction(this, n"OfferTakeNew");
+        OfferModal.OnCancelClickedDelegate.AddUFunction(this, n"OfferKeep");
+    }
+
+    UFUNCTION()
+    private void TestTakeNew()
+    {
+        if (IsValid(OfferModal))
+            OfferModal.DeactivateWidget();
+        OfferTakeNew(nullptr);
+    }
+
+    UFUNCTION()
+    private void OfferTakeNew(UCommonButtonBase Button)
+    {
+        if (OfferModal == nullptr)
+            return; // already answered
+        WSCoop::Info("Weapon re-roll: chose the new roll");
+        OfferModal = nullptr;
+        SendChoice(true);
+    }
+
+    UFUNCTION()
+    private void OfferKeep(UCommonButtonBase Button)
+    {
+        if (OfferModal == nullptr)
+            return;
+        WSCoop::Info("Weapon re-roll: kept the current stats");
+        OfferModal = nullptr;
+        SendChoice(false);
+    }
+
+    private void SendChoice(bool bTakeNew)
+    {
+        APlayerController PC = Gameplay::GetPlayerController(0);
+        if (PC == nullptr)
+            return;
+        if (System::IsServer())
+        {
+            WSWeaponReroll::ServerChoose(PC, bTakeNew);
+            return;
+        }
+        UWSIdentityComponent Channel = WSIdentity::GetComponent(PC);
+        if (Channel != nullptr)
+            Channel.WSServerWeaponRerollChoice(bTakeNew);
     }
 };

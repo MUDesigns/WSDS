@@ -113,10 +113,21 @@ namespace WSMapMarkersTest
             Station.GetItemStackCraftingComponent().SetCurrentCraftingItemStack(Weapon);
             const FString Before = WSWeaponReroll::StatLines(Rarity).Replace("\n", "; ");
             const int DustBefore = WSWeaponReroll::DustOwned(Station, Weapon);
-            WSWeaponReroll::ServerReroll(Cast<APlayerController>(P.Controller), Station);
-            const FString After = WSWeaponReroll::StatLines(Rarity).Replace("\n", "; ");
+            APlayerController RPC = Cast<APlayerController>(P.Controller);
+            UWSWorkstationExtras Extras = UWSWorkstationExtras::Get();
+            WSWeaponReroll::ServerReroll(RPC, Station);
+            const FString Offer1 = Extras.PendingText(RPC).Replace("\n", "; ");
+            WSWeaponReroll::ServerChoose(RPC, false);
+            const FString AfterKeep = WSWeaponReroll::StatLines(Rarity).Replace("\n", "; ");
+            const int DustKeep = WSWeaponReroll::DustOwned(Station, Weapon);
+            WSWeaponReroll::ServerReroll(RPC, Station);
+            const FString Offer2 = Extras.PendingText(RPC).Replace("\n", "; ");
+            WSWeaponReroll::ServerChoose(RPC, true);
+            const FString AfterTake = WSWeaponReroll::StatLines(Rarity).Replace("\n", "; ");
             const int DustAfter = WSWeaponReroll::DustOwned(Station, Weapon);
-            return f"{Weapon.GetItemTag()} {Rarity.GetRarity()}: [{Before}] -> [{After}] dust {DustBefore} -> {DustAfter}";
+            const bool bKeepOk = AfterKeep == Before;
+            const bool bTakeOk = AfterTake == Offer2;
+            return f"{Weapon.GetItemTag()} {Rarity.GetRarity()}: start [{Before}] offer1 [{Offer1}] kept [{AfterKeep}] keepOk={bKeepOk} dust {DustBefore}->{DustKeep}; offer2 [{Offer2}] took [{AfterTake}] takeOk={bTakeOk} dust ->{DustAfter}";
         }
         if (Action == "stationselect")
         {
@@ -138,6 +149,22 @@ namespace WSMapMarkersTest
                 }
             }
             return "FAIL no station or weapon";
+        }
+        if (Action == "rerolloffer")
+        {
+            // Rolls for the weapon already selected at a station (see "stationselect") and leaves the choice to
+            // the player's game.
+            TArray<AItemCraftingWorkstation> RollStations;
+            GetAllActorsOfClass(RollStations);
+            for (AItemCraftingWorkstation Station : RollStations)
+            {
+                if (WSWeaponReroll::CanReroll(Station.GetItemStackCraftingComponent().GetCurrentCraftingItemStack()))
+                {
+                    WSWeaponReroll::ServerReroll(Cast<APlayerController>(P.Controller), Station);
+                    return "rolled; waiting for the player's choice";
+                }
+            }
+            return "FAIL no station with a master weapon selected";
         }
         if (Action == "famsalvage")
         {

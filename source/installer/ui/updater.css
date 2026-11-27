@@ -8,7 +8,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--purple), var(--purple-hi)); }
 .bar.busy > div { width: 35%; animation: slide 1.3s infinite ease-in-out; }
 @keyframes slide { from { margin-left: -35%; } to { margin-left: 100%; } }
-.log { flex: 1; min-height: 0; margin-top: 8px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--gold-dim); overflow-y: auto; padding: 4px 8px;
+.log { flex: 1; min-height: 0; margin-top: 8px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--gold-dim); overflow-y: auto; padding: 10px 12px;
   font: 11px/1.4 Consolas, "Cascadia Mono", monospace; color: #cfc5d8; white-space: pre-wrap; user-select: text; }
 .btns { display: flex; gap: 14px; justify-content: flex-end; margin-top: auto; padding-top: 10px; }
 .btns .btn { min-width: 112px; height: 34px; font-size: 16px; padding: 0 18px; }

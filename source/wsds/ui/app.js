@@ -75,7 +75,7 @@ const SCHEMA = [
     { k: "Coop.Pings", label: "Pings", type: "toggle", help: "The game's own ping (middle mouse button) also reaches players far away: a short beam, a compass marker and a map icon for 10 seconds, labelled with who pinged what." },
     { k: "Coop.SleepThroughNight", label: "Sleep through the night", type: "toggle", help: "At night, interacting with a bed lies you down to sleep. When every player online is asleep, the night is skipped to 7:00." },
     { k: "Coop.QuickStack", label: "Quick stack", type: "toggle", help: "A Quick Stack button in the inventory moves items from the bag into chests within 15 m that already hold the same kind of item." },
-    { k: "Coop.WeaponReroll", label: "Weapon stat re-roll", type: "toggle", help: "At the weapon enhancement station, Master and Grandmaster weapons can get new random stat lines of the same rarity for 5 Brilliant Spirit Dust." },
+    { k: "Coop.WeaponReroll", label: "Weapon stat re-roll", type: "toggle", help: "At the weapon enhancement station, Master and Grandmaster weapons can roll new random stat lines of the same rarity for 5 Brilliant Spirit Dust. The player sees the new roll and chooses to take it or keep the current stats; the dust is spent either way." },
     { k: "Coop.FamiliarSalvage", label: "Familiar salvage", type: "toggle", help: "Familiars can be salvaged at the salvage station: 1 Magick Essence and 2 Spirit Dust per rarity step, the tier set by the familiar's level (up to 9, 10-19, 20+)." },
   ]},
   { section: "Administration", step: "Admin", fields: [
