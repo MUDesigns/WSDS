@@ -40,7 +40,7 @@ namespace WSCoopPermissions
         if (!System::IsServer() || CanModifySanctuary(Player))
             return true;
         WSCoop::Info(f"Permission denied: {WSCoop::PlayerName(Player)} tried to {Action}");
-        WSCoop::Notify(Player, f"Only server admins can {Action} on this server.");
+        WSCoop::Notify(Player, f"Only server admins can {Action} on this server.", "Not Allowed");
         return false;
     }
 }

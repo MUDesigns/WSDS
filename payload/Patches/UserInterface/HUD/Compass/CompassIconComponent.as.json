@@ -1,0 +1,16 @@
+{
+ "path": "UserInterface/HUD/Compass/CompassIconComponent.as",
+ "vanilla": "C1F10C2F53985242CC0F17DE437C1DD154046BF12003CEDD6CB511BB4F56F71F",
+ "patched": "8C1F83AC80C5511B2B0D21F277C1865163EB483D375028FE527704564568C389",
+ "hunks": [
+  {
+   "at": 29,
+   "remove": [],
+   "add": [
+    "            return;\r\n",
+    "        // [WSCoop] Teammates get named compass icons at any distance from WSMapMarkers instead.\r\n",
+    "        if (Cast<APlayerCharacter>(Owner) != nullptr && WSMapMarkers::ShowsTeammates())\r\n"
+   ]
+  }
+ ]
+}

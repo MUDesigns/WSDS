@@ -25,7 +25,8 @@
     "CovenBonusPerMember": 0.1,
     "CovenSkillShare": 0.25,
     "BedSpawn": true,
-    "LuminaryRespec": true
+    "LuminaryRespec": true,
+    "MapMarkers": true
   },
   "ExtraArgs": "-WSSelfTest -WSAutoCreateCharacters"
 }

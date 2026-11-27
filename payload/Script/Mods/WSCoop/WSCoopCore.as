@@ -81,20 +81,48 @@ namespace WSCoop
         return Player.PlayerState.GetPlayerName();
     }
 
-    void ShowLocalMessage(const FText& Text)
+    // Notices travel as one string: "Title\nText" (a message without a line break gets the default title).
+    const FString DefaultNoticeTitle = "Co-op";
+
+    FString NoticeString(const FString& Title, const FString& Text)
+    {
+        return Title.IsEmpty() ? Text : f"{Title}\n{Text}";
+    }
+
+    // Shows a notice on this machine's screen, in the game's on-screen message banner with its own title.
+    void ShowLocalNotice(const FString& Title, const FString& Text)
     {
         AOnScreenMessageManager Manager = Cast<AOnScreenMessageManager>(AGameManager::Get(AOnScreenMessageManager));
         if (Manager == nullptr)
             return;
         FOnScreenMessageRequest Request;
         Request.MessageType = EScreenMessageType::QuestUpdate;
-        FOnScreenMessageRequestPayload_QuestUpdate Payload;
-        Payload.InfoText = Text;
+        FWSNoticePayload Payload;
+        Payload.Title = FText::FromString(Title.IsEmpty() ? DefaultNoticeTitle : Title);
+        Payload.Info = FText::FromString(Text);
         Request.Payload.InitializeAs(Payload);
         Manager.LocalShowOnScreenMessage(Request);
+        Info(f"Notice shown: {Title} | {Text}");
+    }
+
+    // Accepts "Title\nText" or plain text.
+    void ShowLocalMessage(const FText& Message)
+    {
+        const FString Full = Message.ToString();
+        FString Title;
+        FString Text;
+        if (Full.Split("\n", Title, Text))
+            ShowLocalNotice(Title, Text);
+        else
+            ShowLocalNotice(DefaultNoticeTitle, Full);
     }
 
     // Server: show a notice to one player only.
+    void Notify(const APlayerCharacter Player, const FString& Message, const FString& Title)
+    {
+        Notify(Player, NoticeString(Title, Message));
+    }
+
     void Notify(const APlayerCharacter Player, const FString& Message)
     {
         if (Player == nullptr)
@@ -344,6 +372,49 @@ class AWSCoopManager : AGameManager
         if (Keys.Num() > 0)
             MarkSaveGameDirty();
         return Keys;
+    }
+
+    // Map markers (see WSMapMarkers): one per player, "key|name|x|y|z". Replicated to every game and saved with the world.
+    UPROPERTY(Replicated, SaveGame)
+    TArray<FString> MapMarkers;
+
+    // Whether this server lets players place map markers (the Coop.MapMarkers setting).
+    UPROPERTY(Replicated, Transient)
+    bool bMapMarkersEnabled = false;
+
+    private int FindMapMarker(const FString& Key) const
+    {
+        const FString Prefix = f"{Key}|";
+        for (int i = 0; i < MapMarkers.Num(); ++i)
+        {
+            if (MapMarkers[i].StartsWith(Prefix))
+                return i;
+        }
+        return -1;
+    }
+
+    void SetMapMarker(const FString& Key, const FString& OwnerName, const FVector& Location)
+    {
+        if (Key.IsEmpty())
+            return;
+        const FString CleanName = OwnerName.Replace("|", "/").Left(64);
+        const FString Entry = f"{Key}|{CleanName}|{Location.X:.0f}|{Location.Y:.0f}|{Location.Z:.0f}";
+        const int Index = FindMapMarker(Key);
+        if (Index >= 0)
+            MapMarkers[Index] = Entry;
+        else
+            MapMarkers.Add(Entry);
+        MarkSaveGameDirty();
+    }
+
+    bool ClearMapMarker(const FString& Key)
+    {
+        const int Index = FindMapMarker(Key);
+        if (Index < 0)
+            return false;
+        MapMarkers.RemoveAt(Index);
+        MarkSaveGameDirty();
+        return true;
     }
 
     void NotePlayer(const FString& Key, const FString& PlayerName, int64 NowUnix)
@@ -694,4 +765,20 @@ class AWSCoopManager : AGameManager
         WorldCompletedObjectives.Add(Tag);
         MarkSaveGameDirty();
     }
+};
+
+// Coop notice shown in the on-screen message banner (see UOnScreenMessageDisplay.SetupWidget).
+USTRUCT()
+struct FWSNoticePayload
+{
+    FText Title;
+    FText Info;
+};
+
+// Remembers the quest banner's own title while coop notices borrow it (see UOnScreenMessageDisplay.SetupWidget).
+UCLASS()
+class UWSNoticeState : UScriptWorldSubsystem
+{
+    FText QuestTitle;
+    bool bQuestTitleSaved = false;
 };

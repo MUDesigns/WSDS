@@ -136,7 +136,7 @@ namespace WSCoopQuests
         if (Granted > 0)
         {
             WSCoop::Info(f"Catch-up: {WSCoop::PlayerName(Player)} received {Granted} world milestone(s)");
-            WSCoop::Notify(Player, f"Coven progress synced: {Granted} milestone(s) already achieved in this world.");
+            WSCoop::Notify(Player, f"{Granted} milestone(s) already achieved in this world.", "Coven Progress Synced");
         }
     }
 }

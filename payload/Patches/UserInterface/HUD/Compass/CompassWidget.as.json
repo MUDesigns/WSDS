@@ -1,0 +1,16 @@
+{
+ "path": "UserInterface/HUD/Compass/CompassWidget.as",
+ "vanilla": "EDDEB543A570302B4D7F200A39C1D87A866DC97BF2F9413E05505A9E3C01D661",
+ "patched": "14B958DDEC1D559F64BF4DCD7460520B0FF29DE2792DF5CDE10ECDE1415C289A",
+ "hunks": [
+  {
+   "at": 259,
+   "remove": [
+    "            if (EntryWidget.bUseScale)\r\n"
+   ],
+   "add": [
+    "            if (EntryWidget.bUseScale && !WSMapMarkers::IsPinnedIcon(EntryWidget)) // [WSCoop] markers and teammates show at any distance\r\n"
+   ]
+  }
+ ]
+}

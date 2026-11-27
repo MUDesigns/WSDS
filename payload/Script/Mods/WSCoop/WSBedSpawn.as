@@ -53,7 +53,7 @@ namespace WSBedSpawn
         const FString Key = WSCoop::PlayerKey(Player);
         if (Manager == nullptr || Key.IsEmpty())
         {
-            WSCoop::Notify(Player, "Could not set your spawn point (your save identity is not ready yet).");
+            WSCoop::Notify(Player, "Your save identity is not ready yet. Try again in a moment.", "Spawn Point Not Set");
             return;
         }
         const FVector BedLocation = Marker.Bed.GetActorLocation();
@@ -62,7 +62,7 @@ namespace WSBedSpawn
         const bool bSame = Manager.HasBedSpawnAt(Key, BedLocation);
         Manager.SetBedSpawn(Key, BedLocation, Wake, Yaw);
         WSCoop::Info(f"Bed spawn set for {WSCoop::PlayerName(Player)} at {BedLocation} (wake {Wake})");
-        WSCoop::Notify(Player, bSame ? "This bed is already your spawn point." : "Spawn point set: you will wake up here after you die.");
+        WSCoop::Notify(Player, bSame ? "This bed is already your spawn point." : "You will wake up here after you die.", bSame ? "Spawn Point" : "Spawn Point Set");
     }
 
     // Server, from the respawn checkpoint teleport: send a respawning player to their bed. False = no (valid) bed.
@@ -83,7 +83,7 @@ namespace WSBedSpawn
         {
             Manager.ClearBedSpawnsAt(BedLocation);
             WSCoop::Info(f"Bed spawn of {WSCoop::PlayerName(Player)} at {BedLocation} is gone; respawning in place");
-            WSCoop::Notify(Player, "Your bed is gone, so you woke up where you fell. Use another bed to set a new spawn point.");
+            WSCoop::Notify(Player, "Your bed is gone. Use another bed to set a new spawn point.", "Bed Missing");
             return false;
         }
 
@@ -146,7 +146,7 @@ namespace WSBedSpawn
         for (APlayerCharacter P : WSCoop::GetPlayers())
         {
             if (Keys.Contains(WSCoop::PlayerKey(P)))
-                WSCoop::Notify(P, "Your bed was destroyed. Use another bed to set a new spawn point.");
+                WSCoop::Notify(P, "Use another bed to set a new spawn point.", "Your Bed Was Destroyed");
         }
     }
 

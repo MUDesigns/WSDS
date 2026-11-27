@@ -1,7 +1,7 @@
 {
  "path": "Gameplay/World/Map/WorldMapManager.as",
  "vanilla": "D607BF247B3B562E11254743DDB719B75CD4F1999A27D34584BA259132ADA9C5",
- "patched": "F45553C37795037D882BDCA40BDDE2BEFFF0C1EE2D91D840FD26700520DCA77F",
+ "patched": "3ABAA94F6E1D37C2DCF3EEDE0D6BECE28E0FA8663E52A38E11BADFDA0730E86C",
  "hunks": [
   {
    "at": 542,
@@ -10,6 +10,37 @@
     "        // [WSCoop] The rest only redraws the fog texture, which a headless (-nullrhi) server cannot do.\r\n",
     "        if (System::IsDedicatedServer() || WSDS::IsHeadlessHost())\r\n",
     "            return;\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 641,
+   "remove": [],
+   "add": [
+    "    // [WSCoop] Map markers: elements that only exist on this machine's map (kept up to date by WSMapMarkers).\r\n",
+    "    void WSSetLocalElement(const FRegisteredWorldMapElement& Element)\r\n",
+    "    {\r\n",
+    "        const int Idx = FindElementIndex(Element.UniqueId);\r\n",
+    "        if (Idx < 0)\r\n",
+    "        {\r\n",
+    "            RegisteredMapElements.Add(Element);\r\n",
+    "            return;\r\n",
+    "        }\r\n",
+    "        const FRegisteredWorldMapElement& Old = RegisteredMapElements[Idx];\r\n",
+    "        const bool bSame = Old.ActorTransform.Location.Distance(Element.ActorTransform.Location) < 1.0\r\n",
+    "            && Old.Info.Generic.Name.ToString() == Element.Info.Generic.Name.ToString()\r\n",
+    "            && f\"{Old.Info.Generic.IconColor}\" == f\"{Element.Info.Generic.IconColor}\";\r\n",
+    "        RegisteredMapElements[Idx] = Element;\r\n",
+    "        RegisteredMapElements[Idx].bIsDirty = !bSame;\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop]\r\n",
+    "    void WSRemoveLocalElement(FName UniqueId)\r\n",
+    "    {\r\n",
+    "        const int Idx = FindElementIndex(UniqueId);\r\n",
+    "        if (Idx >= 0)\r\n",
+    "            RegisteredMapElements.RemoveAt(Idx);\r\n",
+    "    }\r\n",
     "\r\n"
    ]
   },

@@ -1,0 +1,63 @@
+{
+ "path": "UserInterface/Map/WorldMapWidget.as",
+ "vanilla": "0370A102C0579386BA393C1E200D0C566EE905C48547D1C1581D75CC0E64D9C7",
+ "patched": "B378251BDD5186A9EE67B3655B335EB851EF82D5C79F5188B0ED1F2CF18911EB",
+ "hunks": [
+  {
+   "at": 100,
+   "remove": [],
+   "add": [
+    "        WSMapMarkers::RegisterMapActions(this); // [WSCoop]\r\n"
+   ]
+  },
+  {
+   "at": 194,
+   "remove": [],
+   "add": [
+    "            WSMapMarkers::PlaceMapLabel(Overlay_WorldMap, RegisteredElement, MapPosition, ScaledWidgetSize); // [WSCoop] names under icons\r\n"
+   ]
+  },
+  {
+   "at": 240,
+   "remove": [],
+   "add": [
+    "                // [WSCoop] A removed map marker takes its tooltip with it.\r\n",
+    "                if (MapElementWidget.RegisteredElement.UniqueId.ToString().StartsWith(WSMapMarkers::ElementPrefix))\r\n",
+    "                    MenuAnchor_Tooltip.OnUnhovered();\r\n"
+   ]
+  },
+  {
+   "at": 243,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "        WSMapMarkers::FinishMapLabels(Overlay_WorldMap); // [WSCoop]\r\n"
+   ]
+  },
+  {
+   "at": 410,
+   "remove": [
+    "            // TODO(goncalo.soares): Implement pinging\r\n"
+   ],
+   "add": [
+    "            // [WSCoop] Map markers: left-click marks the spot for everyone.\r\n",
+    "            WSMapMarkers::OnMapClicked(ScreenToWorld(MouseEvent.GetScreenSpacePosition()));\r\n"
+   ]
+  },
+  {
+   "at": 453,
+   "remove": [],
+   "add": [
+    "    // [WSCoop] Map markers: R / gamepad Reset marks the centre of the view (or removes your marker there).\r\n",
+    "    UFUNCTION()\r\n",
+    "    private void WSOnMarkerAction()\r\n",
+    "    {\r\n",
+    "        const FGeometry& Geometry = GetCachedGeometry();\r\n",
+    "        const FVector2D Center = Geometry.LocalToAbsolute(Geometry.GetLocalSize() * 0.5);\r\n",
+    "        WSMapMarkers::OnMapActionPressed(ScreenToWorld(Center), 3.0 / Math::Max(CurrentZoom, 0.1));\r\n",
+    "    }\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}

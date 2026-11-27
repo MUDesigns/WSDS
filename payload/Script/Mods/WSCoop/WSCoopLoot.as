@@ -74,7 +74,7 @@ namespace WSCoopLoot
         if (Manager.HasLooted(Key, PlayerKey))
         {
             WSCoop::Info(f"Chest {Key}: {WSCoop::PlayerName(Player)} already looted it");
-            WSCoop::Notify(Player, "You have already taken your share from this chest.");
+            WSCoop::Notify(Player, "You have already taken your share from this chest.", "Already Looted");
             return true;
         }
 
@@ -417,7 +417,7 @@ namespace WSCoopLoot
     {
         if (!HasHarvested(Harvestable, WSCoop::PlayerKey(Player)))
             return false;
-        WSCoop::Notify(Player, "You already gathered this.");
+        WSCoop::Notify(Player, "You already gathered this.", "Already Gathered");
         return true;
     }
 

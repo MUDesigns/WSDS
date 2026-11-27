@@ -1,7 +1,7 @@
 {
  "path": "UserInterface/HUD/OnScreenMessages/OnScreenMessage.as",
  "vanilla": "0C0D5F0094B6C038F6C70E8118CF809C3E463D1EA5C82DB11526776E6D09DECA",
- "patched": "1392BE278F42B12CEB8B0FC563AD2539BEA2198A614006E3DFDF7A089EF30095",
+ "patched": "E2CBDBB7252D01397BCD4D65AE043F45CE61D9D6D0E3CB4B2B14844DD272EF42",
  "hunks": [
   {
    "at": 142,
@@ -22,6 +22,41 @@
     "            return;\r\n"
    ],
    "add": []
+  },
+  {
+   "at": 214,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] Coop notices stay up longer: they are sentences, not titles.\r\n",
+    "        if (Request.Payload.Contains(FWSNoticePayload))\r\n",
+    "        {\r\n",
+    "            System::ClearAndInvalidateTimerHandle(ClearTimerHandle);\r\n",
+    "            ClearTimerHandle = System::SetTimer(this, n\"Clear\", 5.5, false);\r\n",
+    "        }\r\n"
+   ]
+  },
+  {
+   "at": 265,
+   "remove": [],
+   "add": [
+    "            // [WSCoop] Coop notices borrow the quest banner with their own title; real quest updates get \"New Quest\" back.\r\n",
+    "            UWSNoticeState NoticeState = UWSNoticeState::Get();\r\n",
+    "            if (NoticeState != nullptr && !NoticeState.bQuestTitleSaved)\r\n",
+    "            {\r\n",
+    "                NoticeState.QuestTitle = Widget_NewQuest.Text_Title.WSGetText();\r\n",
+    "                NoticeState.bQuestTitleSaved = true;\r\n",
+    "            }\r\n",
+    "            if (Request.Payload.Contains(FWSNoticePayload))\r\n",
+    "            {\r\n",
+    "                const auto& Notice = Request.Payload.Get(FWSNoticePayload);\r\n",
+    "                Widget_NewQuest.SetTitle(Notice.Title);\r\n",
+    "                Widget_NewQuest.SetInfo(Notice.Info);\r\n",
+    "                Widget_NewQuest.SetPatternType(EUnlockMessagePatternType::Purple);\r\n",
+    "                return Widget_NewQuest.GetParent();\r\n",
+    "            }\r\n",
+    "            if (NoticeState != nullptr && NoticeState.bQuestTitleSaved)\r\n",
+    "                Widget_NewQuest.SetTitle(NoticeState.QuestTitle);\r\n"
+   ]
   },
   {
    "at": 297,

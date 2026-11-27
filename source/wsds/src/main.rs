@@ -13,6 +13,7 @@
 //   key = SHA256("<salt>:<password>")  (only the derived key is stored, never the password)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backups;
 mod livemap;
 
 use hmac::{Hmac, Mac};
@@ -35,7 +36,7 @@ const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
 // The game server runs above normal priority: started by the background service (Task Scheduler's
 // default is below normal) or next to a game on the same PC, it otherwise gets only leftover CPU and hitches.
 const SERVER_CREATION_FLAGS: u32 = CREATE_NO_WINDOW | ABOVE_NORMAL_PRIORITY_CLASS;
-const VERSION: &str = "0.0.48";
+const VERSION: &str = "0.0.49";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config
@@ -103,8 +104,10 @@ fn default_config() -> Value {
             "CovenBonusPerMember": 0.1,
             "CovenSkillShare": 0.25,
             "BedSpawn": true,
-            "LuminaryRespec": true
-        }
+            "LuminaryRespec": true,
+            "MapMarkers": true
+        },
+        "Backups": { "IntervalMinutes": 60, "Keep": 48 }
     })
 }
 
@@ -264,6 +267,7 @@ struct Inner {
     nonces: HashMap<String, u64>,
     update_info: Option<Value>,
     update_busy: bool,
+    backup_busy: bool,
 }
 
 struct App {
@@ -360,6 +364,7 @@ fn gameplay_cvars(cfg: &Value) -> Vec<String> {
         format!("Herc.Player.Skills.PlayerSkillsXPRate {}", num("SkillXPRate", 1.0)),
         format!("Herc.Combat.ShareExperience {}", if flag("ShareExperience", true) { 1 } else { 0 }),
         format!("Herc.Time.DayNightTimescale {}", num("DayNightTimescale", 1.0)),
+        format!("Herc.SaveGame.AutoSaveBackupFrequency {}", backups::backup_frequency(cfg)),
     ]
 }
 
@@ -778,6 +783,7 @@ fn apply_update(sink: &Sink, s: &Shared, info_v: &Value) -> Result<(), String> {
         }
     }
     set_status(sink, s, "updating");
+    backups::before_update(sink, s);
 
     // Copy everything except settings, world data and WSDS.exe (swapped below).
     let root = s.paths.root.clone();
@@ -814,15 +820,29 @@ fn apply_update(sink: &Sink, s: &Shared, info_v: &Value) -> Result<(), String> {
     let new_exe = package.join("WSDS.exe");
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut swapped = false;
+    let mut swap_problem = String::new();
     if new_exe.exists() {
         let old = current.with_file_name("WSDS.old.exe");
         let _ = fs::remove_file(&old);
-        if fs::rename(&current, &old).is_ok() {
-            if fs::copy(&new_exe, &current).is_ok() {
-                swapped = true;
-            } else {
-                let _ = fs::rename(&old, &current);
+        if old.exists() {
+            // Still in use (a WSDS window opened before the last update runs from it): a running exe cannot be
+            // deleted but can be renamed, so move it out of the way. Leftovers are deleted on the next start.
+            let aside = current.with_file_name(format!("WSDS.old-{}.exe", now_secs()));
+            if let Err(e) = fs::rename(&old, &aside) {
+                swap_problem = format!("WSDS.old.exe is in use and could not be moved ({e})");
             }
+        }
+        match fs::rename(&current, &old) {
+            Ok(_) => {
+                if fs::copy(&new_exe, &current).is_ok() {
+                    swapped = true;
+                } else {
+                    swap_problem = "the new WSDS.exe could not be copied".into();
+                    let _ = fs::rename(&old, &current);
+                }
+            }
+            Err(e) if swap_problem.is_empty() => swap_problem = format!("WSDS.exe could not be renamed ({e})"),
+            Err(_) => {}
         }
     }
     if !mod_ok {
@@ -841,7 +861,11 @@ fn apply_update(sink: &Sink, s: &Shared, info_v: &Value) -> Result<(), String> {
         thread::sleep(Duration::from_millis(500));
         std::process::exit(0);
     }
-    info(sink, s, "Update installed (WSDS itself was not replaced).");
+    if swap_problem.is_empty() {
+        info(sink, s, "Update installed (WSDS itself was not replaced).");
+    } else {
+        info(sink, s, &format!("Update installed, but WSDS itself was not replaced: {swap_problem}. Close every WSDS window and run the update again."));
+    }
     s.inner.lock().unwrap().update_busy = false;
     set_status(sink, s, "stopped");
     if was_running || s.headless {
@@ -868,6 +892,15 @@ fn update_loop(sink: Sink, s: Shared) {
                 break;
             }
             thread::sleep(Duration::from_secs(2));
+        }
+        // Copies moved aside because a window still ran from them (see apply_update).
+        if let Some(dir) = cur.parent() {
+            for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if n.starts_with("WSDS.old-") && n.ends_with(".exe") {
+                    let _ = fs::remove_file(e.path());
+                }
+            }
         }
     }
     thread::sleep(Duration::from_secs(90));
@@ -1256,6 +1289,10 @@ fn op(sink: &Sink, s: &Shared, name: &str, args: &Value) -> Result<Value, String
             info(sink, s, "Save requested.");
             Ok(json!(true))
         }
+        "backups_list" => Ok(backups::list(s)),
+        "backup_create" => backups::create(sink.clone(), s.clone()).map(|_| json!(true)),
+        "backup_restore" => backups::restore(sink.clone(), s.clone(), args["name"].as_str().unwrap_or("").to_string()).map(|_| json!(true)),
+        "backup_delete" => backups::delete(sink, s, args["name"].as_str().unwrap_or("")).map(|_| json!(true)),
         "update_game" => update_game(sink.clone(), s.clone()).map(|_| json!(true)),
         "update_status" => {
             let inner = s.inner.lock().unwrap();
@@ -1664,6 +1701,7 @@ fn open_folder(s: State<Shared>, which: String) -> Result<(), String> {
         "data" => s.paths.data_dir(&cfg),
         "logs" => s.paths.data_dir(&cfg).join("Logs"),
         "saves" => s.paths.data_dir(&cfg).join("Saved").join("SaveGames"),
+        "backups" => backups::backups_dir(&s, &cfg),
         _ => s.paths.root.clone(),
     };
     let _ = fs::create_dir_all(&p);
@@ -1683,6 +1721,10 @@ fn run_headless(shared: Shared) {
     {
         let (sink, s) = (sink.clone(), shared.clone());
         thread::spawn(move || update_loop(sink, s));
+    }
+    {
+        let (sink, s) = (sink.clone(), shared.clone());
+        thread::spawn(move || backups::prune_loop(sink, s));
     }
     let _ = start_server(sink.clone(), shared.clone());
     // Mirror WSDS messages to a file so problems are visible without a window.
@@ -1760,6 +1802,10 @@ fn main() {
             if !service_owns_port {
                 start_control_server(sink.clone(), shared.clone());
                 livemap::start(sink.clone(), shared.clone());
+                {
+                    let (sink, s) = (sink.clone(), shared.clone());
+                    thread::spawn(move || backups::prune_loop(sink, s));
+                }
                 {
                     let (sink, s) = (sink.clone(), shared.clone());
                     thread::spawn(move || update_loop(sink, s));

@@ -1,0 +1,43 @@
+{
+ "path": "UserInterface/HUD/Compass/CompassIconWidget.as",
+ "vanilla": "52C047083D352BF44C01591541D504CCB0232CFD8A9A83542D0234037F2A2528",
+ "patched": "06CCF696EBC0CAD774EB91A856E299F0A690D6DB5976BD3EB3D8E04CE9F4800E",
+ "hunks": [
+  {
+   "at": 228,
+   "remove": [],
+   "add": [
+    "    // [WSCoop] Map markers / teammates: icons that follow a location rather than an actor.\r\n",
+    "    void WSSetTargetLocation(const FVector& InLocation)\r\n",
+    "    {\r\n",
+    "        TargetLocation = InLocation;\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop] Name and distance shown under the icon at all times. False = this icon has no name text.\r\n",
+    "    bool WSSetLabel(const FString& Label, const FString& DistanceText)\r\n",
+    "    {\r\n",
+    "        if (Text_MarkerName == nullptr)\r\n",
+    "            return false;\r\n",
+    "        Text_MarkerName.SetText(FText::FromString(Label));\r\n",
+    "        Text_MarkerName.SetVisibility(ESlateVisibility::HitTestInvisible);\r\n",
+    "        if (Text_Distance != nullptr)\r\n",
+    "        {\r\n",
+    "            Text_Distance.SetText(FText::FromString(DistanceText));\r\n",
+    "            Text_Distance.SetVisibility(ESlateVisibility::HitTestInvisible);\r\n",
+    "        }\r\n",
+    "        return true;\r\n",
+    "    }\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 250,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] Map markers and teammates keep their name and distance visible.\r\n",
+    "        if (WSMapMarkers::IsPinnedIcon(this))\r\n",
+    "            return;\r\n"
+   ]
+  }
+ ]
+}

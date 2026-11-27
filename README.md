@@ -23,6 +23,10 @@ A small Windows app (Tauri + WebView2, about 6 MB) styled after the game's own U
 * Dashboard: start / stop / restart / save, announcements, time of day, game updates through SteamCMD.
 * Players: kick, ban, give any item in any amount, XP, heal, teleport a player to another player, private messages.
 * Console tab with the live server log and an admin command line (`help` lists the commands).
+* Backups tab: the world backups the server makes (every `Backups.IntervalMinutes`, the newest `Backups.Keep`
+  kept), **Back Up Now**, and one-click **Restore**: the server saves and stops, the current world is kept as a
+  "before restore" backup (so a restore can be undone), the backup is put in place and the server starts again.
+  A backup is also made before every update.
 * **Remote control:** manage a server on another machine. Enable it in Settings (or in WSDS Setup) with
   a password, then on your own PC choose **+ Add remote server** in the server selector at the top.
   Requests are signed with HMAC-SHA256 using a key derived from the password (the password itself
@@ -92,6 +96,8 @@ exactly as in normal play.
 | `Level` | `L_StarterIsland` | Map used when the world is first created. |
 | `Difficulty` | `1` | New worlds: 0 Easy, 1 Standard, 2 Hard, 3 Impossible. |
 | `AutoSaveSeconds` | `300` | Autosave interval. The world is also saved when a player leaves and on shutdown. |
+| `Backups.IntervalMinutes` | `60` | How often the game copies the world and every player's save into `<world>\Backups`. |
+| `Backups.Keep` | `48` | Automatic backups kept; older ones are deleted. Backups made with Back Up Now are kept until you delete them. |
 | `HeartbeatSeconds` | `60` | How often the console prints a status line. |
 | `Port` | `7777` | UDP port. |
 | `ServerTickRate` | `30` | Simulation rate cap (Hz). |
@@ -119,6 +125,7 @@ exactly as in normal play.
 | `CovenBonusPerMember` | `0.1` | +10% kill and skill XP per nearby member, and a 10% bonus-harvest chance per nearby member. |
 | `CovenSkillShare` | `0.25` | Nearby members receive 25% of the skill XP (gathering, crafting, taming...) a member earns. |
 | `BedSpawn` | `true` | Press interact on a bed to make it your spawn point: when you respawn after dying you wake up on that bed instead of at your last hearth. Each player has their own bed; any bed can be used by anyone. Dungeon checkpoints still come first, and a revive by a friend still happens on the spot. Destroying the bed clears the spawn point. |
+| `MapMarkers` | `true` | Left-click the world map to mark a spot for everyone (R or the gamepad Reset button marks the centre of the view; click your own marker, or press R on it, to remove it). Each player has one marker. Everyone sees it as a beam of light in the owner's player colour, on the world map and on the compass at any distance, with the owner's name. Markers are saved with the world. Teammates are always shown on the compass at any distance with their names, and the world map shows their names under their icons (client side, no setting). |
 | `LuminaryRespec` | `true` | Take luminaries back for free, for yourself and for your familiars: right-click an allocated luminary to refund its point (gamepad: the menu's Undo action on the selected one); press R (the menu's Reset action) in a luminary menu and confirm to refund every luminary in it. A luminary that another one still depends on has to wait until that one is taken back. Free skill-reward luminaries are kept. |
 
 World-wide effects of quests (key items, corruption events, global narration) happen once per
@@ -140,6 +147,12 @@ world, not once per player.
   granted (`ProgressionComponent.as`, `ProgressionUnlockDefinition.as`) so it can be taken back; the
   luminary menus get right-click, Undo and Reset (`ProgressionUnlockWidget.as`, `ProgressionWidget.as`,
   `ConfirmModalWidget.as`).
+* Map markers and teammate compass (`WSMapMarkers.as`): markers are kept by the server and replicated to every
+  game; each game draws the beam (the game's own light-beam effect, tinted), the map icon (`WorldMapManager.as`,
+  `WorldMapWidget.as`, `WorldMapElementWidget.as`) and the compass icons with names (`CompassWidget.as`,
+  `CompassIconWidget.as`, `CompassIconComponent.as`).
+* Co-op notices (spawn point set, already looted, ...) use the quest banner with their own title and stay up
+  longer (`OnScreenMessage.as`, `GlowingTextWidget.as`).
 
 ## Troubleshooting
 

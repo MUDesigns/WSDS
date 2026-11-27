@@ -210,4 +210,11 @@ class UWSIdentityComponent : UHercActorComponent
     {
         WSLuminaryRespec::ServerReset(Cast<APlayerController>(Owner), Comp);
     }
+
+    // Map marker requests from this player's world map (see WSMapMarkers). Named to sort after the RPCs above.
+    UFUNCTION(Server)
+    void ServerWSMapMarker(FVector Location, bool bClear)
+    {
+        WSMapMarkers::ServerSet(Cast<APlayerController>(Owner), Location, bClear);
+    }
 };

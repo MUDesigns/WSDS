@@ -309,6 +309,12 @@ namespace WSAdmin
             const FString Outcome = WSLuminaryRespecTest::Run(Args, FindPlayer(Args[2]));
             Result(!Outcome.StartsWith("FAIL"), Cmd, Outcome);
         }
+        else if (Cmd == "markertest" && Args.Num() >= 2 && System::ParseParam(System::GetCommandLine(), "WSDevTools"))
+        {
+            // markertest list | set <player> [dx dy] | clear <player>
+            const FString Outcome = WSMapMarkersTest::Run(Args, Args.Num() >= 3 ? FindPlayer(Args[2]) : nullptr);
+            Result(!Outcome.StartsWith("FAIL"), Cmd, Outcome);
+        }
         else if (Cmd == "players" || Cmd == "status")
         {
             Admin.EmitState();
@@ -430,7 +436,7 @@ namespace WSAdmin
         {
             APlayerCharacter P = FindPlayer(Args[1]);
             if (P == nullptr) { Result(false, Cmd, f"no spawned player '{Args[1]}'"); return; }
-            WSCoop::Notify(P, JoinFrom(Args, 2));
+            WSCoop::Notify(P, JoinFrom(Args, 2), "Server Message");
             Result(true, Cmd, f"message sent to {WSCoop::PlayerName(P)}");
         }
         else if (Cmd == "save")
@@ -704,7 +710,7 @@ class UWSAdminSubsystem : UScriptWorldSubsystem
     void Broadcast(const FString& Message)
     {
         for (APlayerCharacter P : WSCoop::GetPlayers())
-            WSCoop::Notify(P, Message);
+            WSCoop::Notify(P, Message, "Server Message");
     }
 
     bool SetTimeOfDay(float Hour)

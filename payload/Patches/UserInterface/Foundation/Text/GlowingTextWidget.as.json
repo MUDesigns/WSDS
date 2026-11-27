@@ -1,0 +1,19 @@
+{
+ "path": "UserInterface/Foundation/Text/GlowingTextWidget.as",
+ "vanilla": "C638D0601ABA494661F5DD4EA31B1AF68094ADB18B19B847EACED259D8303C07",
+ "patched": "1BCD60E38C89A31F2093DAACCCF9E7F74B701177BE3D836BE7D206E7C22B628F",
+ "hunks": [
+  {
+   "at": 49,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "    // [WSCoop] Lets coop notices put the quest banner's title back after borrowing it.\r\n",
+    "    FText WSGetText() const\r\n",
+    "    {\r\n",
+    "        return Text;\r\n",
+    "    }\r\n"
+   ]
+  }
+ ]
+}

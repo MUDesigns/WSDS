@@ -26,10 +26,11 @@
       <a data-page="map">Map</a>
       <a data-page="console">Console</a>
       <a data-page="bans">Bans</a>
+      <a data-page="backups">Backups</a>
       <a data-page="settings">Settings</a>
       <div class="menu-foot">
         <div class="muted small" id="footWorld">-</div>
-        <div class="muted small" id="footVersion">WSDS 0.0.48</div>
+        <div class="muted small" id="footVersion">WSDS 0.0.49</div>
       </div>
     </nav>
 
@@ -76,6 +77,7 @@
               <h3>Folders</h3>
               <div class="row gap wrap">
                 <button class="btn small dark" data-open="saves">World saves</button>
+                <button class="btn small dark" data-open="backups">Backups</button>
                 <button class="btn small dark" data-open="logs">Logs</button>
                 <button class="btn small dark" data-open="root">Mod folder</button>
               </div>
@@ -138,6 +140,21 @@
             <tbody id="banRows"></tbody>
           </table>
           <div class="empty" id="bansEmpty">No bans.</div>
+        </div>
+      </section>
+
+      <!-- ================= Backups ================= -->
+      <section id="page-backups" class="page">
+        <div class="frame fill"><i class="c3"></i><i class="c4"></i>
+          <div class="row between"><h2>World Backups</h2>
+            <div class="row gap"><button class="btn small dark" id="bkRefresh">Refresh</button><button class="btn" id="bkCreate">Back Up Now</button></div>
+          </div>
+          <p class="muted small" id="bkInfo"></p>
+          <table class="table">
+            <thead><tr><th>Backup</th><th>Made</th><th>Size</th><th class="right">Actions</th></tr></thead>
+            <tbody id="bkRows"></tbody>
+          </table>
+          <div class="empty" id="bkEmpty">No backups yet. The server makes one automatically, or press Back Up Now.</div>
         </div>
       </section>
 

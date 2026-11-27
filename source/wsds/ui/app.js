@@ -68,6 +68,7 @@ const SCHEMA = [
     { k: "Coop.CovenSkillShare", label: "Skill XP shared with nearby members", type: "number", step: 0.05, min: 0, max: 1 },
     { k: "Coop.BedSpawn", label: "Bed spawn points", type: "toggle", help: "Press interact on a bed to respawn there after dying instead of at your last hearth." },
     { k: "Coop.LuminaryRespec", label: "Luminary respec", type: "toggle", help: "Right-click a luminary to take it back and get its point back; R in a luminary menu resets that menu. Works for player and familiar luminaries." },
+    { k: "Coop.MapMarkers", label: "Map markers", type: "toggle", help: "Left-click the world map to mark a spot for everyone: a beam of light in your player colour, shown on every player's map and compass with your name." },
   ]},
   { section: "Administration", step: "Admin", fields: [
     { k: "Coop.CoOwnerPermissions", label: "Who may build in sanctuaries", type: "select", options: [["AllPlayers", "Everyone (co-owners)"], ["AdminsOnly", "Admins only"]] },
@@ -75,6 +76,8 @@ const SCHEMA = [
   ]},
   { section: "Saving & Performance", step: null, fields: [
     { k: "AutoSaveSeconds", label: "Autosave interval (seconds)", type: "number", min: 30, max: 3600, step: 30 },
+    { k: "Backups.IntervalMinutes", label: "World backup every (minutes)", type: "number", min: 5, max: 1440, step: 5, help: "The game copies the world and every player's save at this interval. Restore copies on the Backups page." },
+    { k: "Backups.Keep", label: "Automatic backups to keep", type: "number", min: 1, max: 1000, help: "Older automatic backups are removed. Backups you make yourself are kept until you remove them." },
     { k: "ServerTickRate", label: "Server tick rate (Hz)", type: "number", min: 10, max: 120 },
     { k: "HeartbeatSeconds", label: "Status line interval (seconds)", type: "number", min: 10, max: 3600 },
     { k: "AutoRestartOnCrash", label: "Restart automatically after a crash", type: "toggle" },
@@ -397,9 +400,37 @@ async function runConsoleCommand() {
 }
 
 // ---------------------------------------------------------------- wiring
+// ---------------------------------------------------------------- backups
+const BK_KIND = { auto: "Automatic", manual: "Made by you", "before-restore": "Before a restore", "before-update": "Before an update" };
+function fmtSize(n) { return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`; }
+async function loadBackups() {
+  let r;
+  try { r = await api("backups_list"); } catch (e) { $("#bkInfo").textContent = String(e); return; }
+  const list = r.backups || [];
+  $("#bkInfo").textContent = `World "${r.slot}": the server backs up every ${r.intervalMinutes} minutes and keeps the newest ${r.keep} automatic backups. Restoring saves and stops the server, keeps a copy of the current world, then starts the server again.`;
+  $("#bkEmpty").style.display = list.length ? "none" : "block";
+  $("#bkRows").innerHTML = list.map((b) => `<tr><td class="pname">${esc(b.name)}<span class="pkey">${esc(BK_KIND[b.kind] || b.kind)}</span></td>
+    <td class="muted small">${b.time ? new Date(b.time * 1000).toLocaleString() : ""}</td><td class="muted small">${fmtSize(b.size)}</td>
+    <td class="right"><div class="acts"><button class="btn small" data-bkrestore="${esc(b.name)}">Restore</button><button class="btn small dark" data-bkdelete="${esc(b.name)}">Delete</button></div></td></tr>`).join("");
+  $$("[data-bkrestore]").forEach((x) => (x.onclick = () => restoreBackup(x.dataset.bkrestore)));
+  $$("[data-bkdelete]").forEach((x) => (x.onclick = () => modal("Delete this backup?", `<p>${esc(x.dataset.bkdelete)} will be gone for good.</p>`,
+    [["Delete", "", async () => { await call("backup_delete", { name: x.dataset.bkdelete }); activity(`Backup deleted: ${x.dataset.bkdelete}`, "ok"); loadBackups(); }], ["Cancel", "dark"]])));
+}
+function restoreBackup(name) {
+  modal("Restore this backup?", `<p>The world and every player's progress go back to <span class="gold">${esc(name)}</span>.</p>
+    <p class="muted small">The server saves and stops, the current world is kept as a "before restore" backup (so you can undo this), then the server starts again.${players.length ? ` ${players.length} player(s) online will be disconnected.` : ""}</p>`,
+    [["Restore", "", async () => { await call("backup_restore", { name }); activity(`Restoring ${name}...`); setTimeout(loadBackups, 8000); setTimeout(loadBackups, 25000); }], ["Cancel", "dark"]]);
+}
+async function createBackup() {
+  await call("backup_create");
+  activity("Backing up the world...");
+  setTimeout(loadBackups, 6000); setTimeout(loadBackups, 20000);
+}
+
 function showPage(name) {
   $$(".menu a").forEach((a) => a.classList.toggle("active", a.dataset.page === name));
   $$(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + name));
+  if (name === "backups") loadBackups();
   if (name === "map") mountMap(); else unmountMap();
   if (name === "console") $("#console").scrollTop = $("#console").scrollHeight;
 }
@@ -576,6 +607,8 @@ async function init() {
   $("#timeSlider").oninput = () => ($("#timeVal").textContent = fmtHour(Number($("#timeSlider").value)));
   $("#bTime").onclick = async () => { const h = Number($("#timeSlider").value); await adminCmd(`time ${h}`); activity(`Time of day set to ${fmtHour(h)}`, "ok"); };
   $$("[data-open]").forEach((b) => (b.onclick = () => invoke("open_folder", { which: b.dataset.open }).catch((e) => toast(String(e), true))));
+  $("#bkRefresh").onclick = loadBackups;
+  $("#bkCreate").onclick = createBackup;
   $("#playerRows").onclick = (e) => { const b = e.target.closest("[data-act]"); if (b) playerAction(b.dataset.act, players[Number(b.dataset.i)]); };
   $("#cSend").onclick = runConsoleCommand;
   $("#cInput").onkeydown = (e) => { if (e.key === "Enter") runConsoleCommand(); };

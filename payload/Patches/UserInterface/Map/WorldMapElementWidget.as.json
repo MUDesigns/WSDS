@@ -1,0 +1,17 @@
+{
+ "path": "UserInterface/Map/WorldMapElementWidget.as",
+ "vanilla": "8C1914AFB50A1C94BFDF2D18DDA232022BFF87A530DF567B5548C7EB9DF548A1",
+ "patched": "B6152C02F5F0734FC84AC08407B4AE7737EE98D402A67722A34AB3CAE84E3737",
+ "hunks": [
+  {
+   "at": 208,
+   "remove": [],
+   "add": [
+    "        // [WSCoop] Clicking your own map marker removes it.\r\n",
+    "        if (WSMapMarkers::OnElementClicked(RegisteredElement.UniqueId))\r\n",
+    "            return;\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}

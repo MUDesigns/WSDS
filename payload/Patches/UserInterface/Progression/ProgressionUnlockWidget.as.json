@@ -1,7 +1,7 @@
 {
  "path": "UserInterface/Progression/ProgressionUnlockWidget.as",
  "vanilla": "39461BDFDB38F33A7A07C2DE0397F4E5A44672A2B0D09D433BDF485988FB91C7",
- "patched": "F5874A9522DABDC92307857CCB136E25B8FB8F5ABEDD4B355AD7F8F4F433890E",
+ "patched": "0CA07F87F4DBE766C599EDAFCDA6A9830A74C391D7C07D63E8F74AB3C4C74F7C",
  "hunks": [
   {
    "at": 707,
@@ -47,7 +47,7 @@
     "            return;\r\n",
     "        if (!Why.IsEmpty())\r\n",
     "        {\r\n",
-    "            WSCoop::ShowLocalMessage(FText::FromString(Why));\r\n",
+    "            WSCoop::ShowLocalNotice(\"Can't Take Back\", Why);\r\n",
     "            return;\r\n",
     "        }\r\n",
     "        WSLuminaryRespec::RequestRefund(ProgressionComponent, Unlock, InstanceData.FamiliarPassiveTag);\r\n",

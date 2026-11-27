@@ -267,7 +267,7 @@ namespace WSLuminaryRespec
         APlayerCharacter Player = PC != nullptr ? Cast<APlayerCharacter>(PC.GetControlledPawn()) : nullptr;
         const FString Why = Refund(Player, Comp, Unlock, PassiveTag);
         if (!Why.IsEmpty())
-            WSCoop::Notify(Player, Why);
+            WSCoop::Notify(Player, Why, "Can't Take Back");
     }
 
     void ServerReset(APlayerController PC, UProgressionComponent Comp)
@@ -275,7 +275,7 @@ namespace WSLuminaryRespec
         APlayerCharacter Player = PC != nullptr ? Cast<APlayerCharacter>(PC.GetControlledPawn()) : nullptr;
         FString Why;
         const int Points = ResetAll(Player, Comp, Why);
-        WSCoop::Notify(Player, Points < 0 ? Why : f"Luminaries reset: {Points} point(s) returned.");
+        WSCoop::Notify(Player, Points < 0 ? Why : f"{Points} point(s) returned.", Points < 0 ? "Can't Reset" : "Luminaries Reset");
     }
 
     // ---- client side (menus) ----
@@ -294,7 +294,7 @@ namespace WSLuminaryRespec
         if (Channel != nullptr)
             Channel.ServerWSLuminaryRefund(Comp, Unlock, PassiveTag);
         else
-            WSCoop::ShowLocalMessage(FText::FromString("This server doesn't support luminary respec."));
+            WSCoop::ShowLocalNotice("Luminaries", "This server doesn't support luminary respec.");
     }
 
     void RequestReset(UProgressionComponent Comp)
@@ -311,7 +311,7 @@ namespace WSLuminaryRespec
         if (Channel != nullptr)
             Channel.ServerWSLuminaryReset(Comp);
         else
-            WSCoop::ShowLocalMessage(FText::FromString("This server doesn't support luminary respec."));
+            WSCoop::ShowLocalNotice("Luminaries", "This server doesn't support luminary respec.");
     }
 
     UInputAction LoadAction(const FString& Path)
