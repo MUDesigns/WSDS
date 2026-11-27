@@ -374,45 +374,148 @@ class AWSCoopManager : AGameManager
         return Keys;
     }
 
-    // Map markers (see WSMapMarkers): one per player, "key|name|x|y|z". Replicated to every game and saved with the world.
+    // Map markers (see WSMapMarkers): "key|name|x|y|z|type|id" (entries from 0.0.49 have no type/id: a "meet"
+    // marker with id 0). Replicated to every game and saved with the world.
     UPROPERTY(Replicated, SaveGame)
     TArray<FString> MapMarkers;
 
-    // Whether this server lets players place map markers (the Coop.MapMarkers setting).
+    // Where players went down, or the grave holding the items they dropped: "key|name|x|y|z|state" (state "down"
+    // or "items"). Saved, so a grave marker survives a restart.
+    UPROPERTY(Replicated, SaveGame)
+    TArray<FString> DeathMarkers;
+
+    // Short-lived pings (middle mouse): "key|name|x|y|z|label|id". Not saved.
+    UPROPERTY(Replicated, Transient)
+    TArray<FString> Pings;
+
+    // Online players for the player list (hold P): "name|level|hp|maxhp|state". Not saved.
+    UPROPERTY(Replicated, Transient)
+    TArray<FString> PlayerInfos;
+
+    // Bumped every time the night is slept away; each game fades its screen (see WSSleep).
+    UPROPERTY(Replicated, Transient, ReplicatedUsing = OnRep_NightSkips)
+    int NightSkips = 0;
+
+    UFUNCTION()
+    void OnRep_NightSkips()
+    {
+        WSSleep::OnNightSkippedLocal();
+    }
+
+    // The server's mod version (see WSVersion).
+    UPROPERTY(Replicated, Transient)
+    FString ServerModVersion;
+
+    // Which features this server has turned on (Coop settings), for the games' UI.
     UPROPERTY(Replicated, Transient)
     bool bMapMarkersEnabled = false;
 
-    private int FindMapMarker(const FString& Key) const
+    UPROPERTY(Replicated, Transient)
+    bool bQuickStackEnabled = false;
+
+    UPROPERTY(Replicated, Transient)
+    int MaxMarkersPerPlayer = 3;
+
+    // ---- map markers ----
+
+    // Index of a player's marker with that id, -1 if none.
+    int FindMapMarker(const FString& Key, int Id) const
     {
-        const FString Prefix = f"{Key}|";
         for (int i = 0; i < MapMarkers.Num(); ++i)
         {
-            if (MapMarkers[i].StartsWith(Prefix))
+            FString EntryKey;
+            FString EntryName;
+            FVector Location;
+            FString Type;
+            int EntryId = 0;
+            if (WSMapMarkers::ParseMarker(MapMarkers[i], EntryKey, EntryName, Location, Type, EntryId) && EntryKey == Key && EntryId == Id)
                 return i;
         }
         return -1;
     }
 
-    void SetMapMarker(const FString& Key, const FString& OwnerName, const FVector& Location)
+    // A player's markers, oldest first.
+    TArray<int> MarkersOf(const FString& Key) const
+    {
+        TArray<int> Out;
+        for (int i = 0; i < MapMarkers.Num(); ++i)
+        {
+            if (MapMarkers[i].StartsWith(f"{Key}|"))
+                Out.Add(i);
+        }
+        return Out;
+    }
+
+    // Adds a marker; when the player already has MaxPerPlayer, their oldest goes. Returns the new id.
+    int AddMapMarker(const FString& Key, const FString& OwnerName, const FVector& Location, const FString& Type, int MaxPerPlayer)
+    {
+        if (Key.IsEmpty())
+            return -1;
+        TArray<int> Mine = MarkersOf(Key);
+        int NextId = 1;
+        for (int Index : Mine)
+        {
+            FString EntryKey;
+            FString EntryName;
+            FVector L;
+            FString T;
+            int Id = 0;
+            if (WSMapMarkers::ParseMarker(MapMarkers[Index], EntryKey, EntryName, L, T, Id))
+                NextId = Math::Max(NextId, Id + 1);
+        }
+        while (Mine.Num() >= Math::Max(1, MaxPerPlayer))
+        {
+            MapMarkers.RemoveAt(Mine[0]);
+            Mine = MarkersOf(Key);
+        }
+        const FString CleanName = OwnerName.Replace("|", "/").Left(64);
+        MapMarkers.Add(f"{Key}|{CleanName}|{Location.X:.0f}|{Location.Y:.0f}|{Location.Z:.0f}|{Type}|{NextId}");
+        MarkSaveGameDirty();
+        return NextId;
+    }
+
+    bool RemoveMapMarker(const FString& Key, int Id)
+    {
+        const int Index = FindMapMarker(Key, Id);
+        if (Index < 0)
+            return false;
+        MapMarkers.RemoveAt(Index);
+        MarkSaveGameDirty();
+        return true;
+    }
+
+    // ---- death markers ----
+
+    int FindDeathMarker(const FString& Key) const
+    {
+        for (int i = 0; i < DeathMarkers.Num(); ++i)
+        {
+            if (DeathMarkers[i].StartsWith(f"{Key}|"))
+                return i;
+        }
+        return -1;
+    }
+
+    void SetDeathMarker(const FString& Key, const FString& OwnerName, const FVector& Location, const FString& State)
     {
         if (Key.IsEmpty())
             return;
         const FString CleanName = OwnerName.Replace("|", "/").Left(64);
-        const FString Entry = f"{Key}|{CleanName}|{Location.X:.0f}|{Location.Y:.0f}|{Location.Z:.0f}";
-        const int Index = FindMapMarker(Key);
+        const FString Entry = f"{Key}|{CleanName}|{Location.X:.0f}|{Location.Y:.0f}|{Location.Z:.0f}|{State}";
+        const int Index = FindDeathMarker(Key);
         if (Index >= 0)
-            MapMarkers[Index] = Entry;
+            DeathMarkers[Index] = Entry;
         else
-            MapMarkers.Add(Entry);
+            DeathMarkers.Add(Entry);
         MarkSaveGameDirty();
     }
 
-    bool ClearMapMarker(const FString& Key)
+    bool ClearDeathMarker(const FString& Key)
     {
-        const int Index = FindMapMarker(Key);
+        const int Index = FindDeathMarker(Key);
         if (Index < 0)
             return false;
-        MapMarkers.RemoveAt(Index);
+        DeathMarkers.RemoveAt(Index);
         MarkSaveGameDirty();
         return true;
     }

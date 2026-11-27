@@ -4477,7 +4477,7 @@ dependencies = [
 
 [[package]]
 name = "wscoop-installer"
-version = "0.0.49"
+version = "0.0.50"
 dependencies = [
  "serde_json",
  "tauri",

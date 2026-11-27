@@ -13,8 +13,11 @@
 //   key = SHA256("<salt>:<password>")  (only the derived key is stored, never the password)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod access;
 mod backups;
+mod listing;
 mod livemap;
+mod restarts;
 
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
@@ -36,7 +39,7 @@ const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
 // The game server runs above normal priority: started by the background service (Task Scheduler's
 // default is below normal) or next to a game on the same PC, it otherwise gets only leftover CPU and hitches.
 const SERVER_CREATION_FLAGS: u32 = CREATE_NO_WINDOW | ABOVE_NORMAL_PRIORITY_CLASS;
-const VERSION: &str = "0.0.49";
+const VERSION: &str = "0.0.50";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config
@@ -60,7 +63,7 @@ fn find_mod_root() -> PathBuf {
 }
 
 fn default_config() -> Value {
-    json!({
+    let mut cfg = json!({
         "SetupComplete": false,
         "WorldSlot": "DedicatedWorld",
         "WorldName": "Witchspire Dedicated Server",
@@ -108,7 +111,23 @@ fn default_config() -> Value {
             "MapMarkers": true
         },
         "Backups": { "IntervalMinutes": 60, "Keep": 48 }
-    })
+    });
+    // Added separately: one json! this size exceeds the macro recursion limit.
+    for (k, v) in [("MaxMarkersPerPlayer", json!(3)), ("DeathMarkers", json!(true)), ("SleepThroughNight", json!(true)), ("Pings", json!(true)), ("QuickStack", json!(true))] {
+        cfg["Coop"][k] = v;
+    }
+    cfg["Restarts"] = json!({
+        "Enabled": false,
+        "Times": ["05:00"],
+        "EveryHours": 0,
+        "WarnMinutes": [15, 5, 1],
+        "Message": "The server restarts in {minutes}. Find a safe spot!",
+        "SkipWhenEmpty": false
+    });
+    cfg["Motd"] = json!("");
+    cfg["Whitelist"] = json!({ "Enabled": false });
+    cfg["PublicListing"] = json!({ "Enabled": false, "Description": "" });
+    cfg
 }
 
 fn merge_defaults(target: &mut Value, defaults: &Value) {
@@ -268,12 +287,15 @@ struct Inner {
     update_info: Option<Value>,
     update_busy: bool,
     backup_busy: bool,
+    whitelist_ver: u64,
+    listing: Option<Value>, // last public-listing outcome
 }
 
 struct App {
     paths: Paths,
     inner: Mutex<Inner>,
     live: Mutex<livemap::LiveState>,
+    restarts: Mutex<restarts::Sched>,
     headless: bool,
 }
 
@@ -556,6 +578,22 @@ fn request_stop(sink: &Sink, s: &Shared) -> Result<(), String> {
             let _ = c.kill();
         }
         let _ = fs::remove_file(control.join("shutdown.request"));
+    });
+    Ok(())
+}
+
+/// Saves and stops the server, then starts it again (starts it when it is not running).
+fn restart_server(sink: &Sink, s: &Shared) -> Result<(), String> {
+    if s.inner.lock().unwrap().child.is_none() {
+        return start_server(sink.clone(), s.clone());
+    }
+    request_stop(sink, s)?;
+    let (sink, s) = (sink.clone(), s.clone());
+    thread::spawn(move || {
+        if wait_stopped(&s, 100) {
+            thread::sleep(Duration::from_secs(2));
+            let _ = start_server(sink, s);
+        }
     });
     Ok(())
 }
@@ -1120,9 +1158,10 @@ fn on_server_ready(sink: &Sink, s: &Shared) {
                 inner.queue.push_back(format!("bankey {k}"));
             }
         }
+        inner.queue.extend(access::ready_commands(s, &cfg));
         inner.queue.push_back("items".into());
     }
-    info(sink, s, "Server is up - applying bans, gameplay settings and loading the item catalogue.");
+    info(sink, s, "Server is up - applying bans, the whitelist, the message of the day, gameplay settings and loading the item catalogue.");
 }
 
 fn load_bans(paths: &Paths, cfg: &Value) -> Vec<Value> {
@@ -1240,7 +1279,12 @@ fn op(sink: &Sink, s: &Shared, name: &str, args: &Value) -> Result<Value, String
             cfg["RemoteControl"]["Key"] = old["RemoteControl"]["Key"].clone();
             cfg["RemoteControl"]["Salt"] = old["RemoteControl"]["Salt"].clone();
             cfg["SteamCmd"] = old["SteamCmd"].clone();
-            write_config(&s.paths, &cfg).map(|_| json!(true))
+            access::clamp_config(&mut cfg);
+            listing::clamp_config(&mut cfg);
+            write_config(&s.paths, &cfg)?;
+            // The message of the day and the whitelist switch reach a running server right away.
+            access::config_saved(s, &old, &load_config(&s.paths));
+            Ok(json!(true))
         }
         "set_remote_password" => {
             let pw = args["password"].as_str().unwrap_or("");
@@ -1267,20 +1311,14 @@ fn op(sink: &Sink, s: &Shared, name: &str, args: &Value) -> Result<Value, String
             start_server(sink.clone(), s.clone()).map(|_| json!(true))
         }
         "server_stop" => request_stop(sink, s).map(|_| json!(true)),
-        "server_restart" => {
-            if s.inner.lock().unwrap().child.is_none() {
-                return start_server(sink.clone(), s.clone()).map(|_| json!(true));
-            }
-            request_stop(sink, s)?;
-            let (sink, s) = (sink.clone(), s.clone());
-            thread::spawn(move || {
-                if wait_stopped(&s, 100) {
-                    thread::sleep(Duration::from_secs(2));
-                    let _ = start_server(sink, s);
-                }
-            });
-            Ok(json!(true))
-        }
+        "server_restart" => restart_server(sink, s).map(|_| json!(true)),
+        "restarts_status" => Ok(restarts::status(s)),
+        "restart_countdown" => restarts::countdown(sink, s, args["minutes"].as_u64().unwrap_or(5)).map(|_| json!(true)),
+        "restart_cancel" => restarts::cancel(sink, s).map(|_| json!(true)),
+        "whitelist" => Ok(access::list(s)),
+        "whitelist_add" => access::add(sink, s, args["key"].as_str().unwrap_or(""), args["name"].as_str().unwrap_or("")).map(|who| json!(who)),
+        "whitelist_remove" => access::remove(sink, s, args["key"].as_str().unwrap_or(""), args["name"].as_str().unwrap_or("")).map(|_| json!(true)),
+        "listing_status" => Ok(listing::status(s)),
         "server_save" => {
             if s.inner.lock().unwrap().child.is_none() {
                 return Err("The server is not running.".into());
@@ -1343,6 +1381,7 @@ fn op(sink: &Sink, s: &Shared, name: &str, args: &Value) -> Result<Value, String
                 "itemsVer": inner.items_ver,
                 "bans": load_bans(&s.paths, &cfg),
                 "bansVer": inner.bans_ver,
+                "whitelistVer": inner.whitelist_ver,
             }))
         }
         "poll" => {
@@ -1363,6 +1402,7 @@ fn op(sink: &Sink, s: &Shared, name: &str, args: &Value) -> Result<Value, String
                 "state": inner.last_state.clone().unwrap_or(json!({ "players": [] })),
                 "itemsVer": inner.items_ver,
                 "bansVer": inner.bans_ver,
+                "whitelistVer": inner.whitelist_ver,
             }))
         }
         "items" => {
@@ -1726,6 +1766,14 @@ fn run_headless(shared: Shared) {
         let (sink, s) = (sink.clone(), shared.clone());
         thread::spawn(move || backups::prune_loop(sink, s));
     }
+    {
+        let (sink, s) = (sink.clone(), shared.clone());
+        thread::spawn(move || restarts::run(sink, s));
+    }
+    {
+        let (sink, s) = (sink.clone(), shared.clone());
+        thread::spawn(move || listing::run(sink, s));
+    }
     let _ = start_server(sink.clone(), shared.clone());
     // Mirror WSDS messages to a file so problems are visible without a window.
     let cfg = load_config(&shared.paths);
@@ -1757,6 +1805,7 @@ fn main() {
         paths: Paths { root: find_mod_root() },
         inner: Mutex::new(Inner { status: "stopped".into(), ..Default::default() }),
         live: Mutex::new(Default::default()),
+        restarts: Mutex::new(Default::default()),
         headless: args.iter().any(|a| a == "--headless"),
     });
 
@@ -1805,6 +1854,14 @@ fn main() {
                 {
                     let (sink, s) = (sink.clone(), shared.clone());
                     thread::spawn(move || backups::prune_loop(sink, s));
+                }
+                {
+                    let (sink, s) = (sink.clone(), shared.clone());
+                    thread::spawn(move || restarts::run(sink, s));
+                }
+                {
+                    let (sink, s) = (sink.clone(), shared.clone());
+                    thread::spawn(move || listing::run(sink, s));
                 }
                 {
                     let (sink, s) = (sink.clone(), shared.clone());

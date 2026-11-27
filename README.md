@@ -10,7 +10,9 @@ need the same mod version, because the mod changes gameplay scripts.
 ## Setup programs
 
 * **Witchspire Co-op Mod Setup.exe** - for players. Finds your Steam copy of Witchspire, installs the
-  mod (original files are backed up) and can uninstall it again.
+  mod (original files are backed up) and can uninstall it again. It also installs the **Co-op Mod updater**
+  (`WSCoopUpdater.exe`): when a new version is out, Witchspire offers it at the main menu, and the update
+  takes one click (Witchspire closes, the mod updates, Witchspire can start again).
 * **WSDS Setup.exe** - for the server machine. Downloads Witchspire with SteamCMD (one sign-in with an
   account that owns the game; the password is only passed to SteamCMD), installs the mod and **WSDS**,
   opens the firewall ports and registers a background service that starts with Windows.
@@ -27,6 +29,13 @@ A small Windows app (Tauri + WebView2, about 6 MB) styled after the game's own U
   kept), **Back Up Now**, and one-click **Restore**: the server saves and stops, the current world is kept as a
   "before restore" backup (so a restore can be undone), the backup is put in place and the server starts again.
   A backup is also made before every update.
+* Restarts tab: optional scheduled restarts (off by default) at fixed times of day and/or every N hours of
+  uptime, with on-screen warnings for players beforehand, optionally waiting until nobody is online.
+  **Restart in 5 minutes** does the same by hand and can be cancelled.
+* Message of the day shown to players when they join, and an optional **whitelist** (managed on the Bans
+  page, or with the Whitelist button on the Players page). Both take effect without a restart.
+* **Public server list** (opt-in): list the server with a short description and its player count on
+  wsdsmaps.com/servers so other players can find it. Needs the live map, reachable from the internet.
 * **Remote control:** manage a server on another machine. Enable it in Settings (or in WSDS Setup) with
   a password, then on your own PC choose **+ Add remote server** in the server selector at the top.
   Requests are signed with HMAC-SHA256 using a key derived from the password (the password itself
@@ -105,6 +114,16 @@ exactly as in normal play.
 | `ConsoleVerbosity` | `important` | `all` shows every engine log line in the console (the log file always has everything). |
 | `ServerDataDir` | `ServerData` | Where saves, logs and server config live. |
 | `ExtraArgs` | | Extra command-line arguments for the server process. |
+| `Restarts.Enabled` | `false` | Restart the server on a schedule. |
+| `Restarts.Times` | `["05:00"]` | Daily restart times in the server's local time (24-hour `HH:MM`). |
+| `Restarts.EveryHours` | `0` | Also restart after every N hours the server has been up (0 = off). The earliest of all restarts comes next. |
+| `Restarts.WarnMinutes` | `[15, 5, 1]` | Minutes before a restart at which every player gets a notice. |
+| `Restarts.Message` | `The server restarts in {minutes}. Find a safe spot!` | The notice; `{minutes}` becomes e.g. `15 minutes` or `1 minute`. |
+| `Restarts.SkipWhenEmpty` | `false` | Wait until nobody is online: at the planned time the server restarts only if it is empty, otherwise as soon as the last player leaves, and at the latest 2 hours later (after the usual warnings). |
+| `Motd` | | Message of the day, shown to every player when they join (up to 500 characters). |
+| `Whitelist.Enabled` | `false` | Only players on the whitelist (`ServerData\whitelist.json`, managed in WSDS) can join. |
+| `PublicListing.Enabled` | `false` | List the server on wsdsmaps.com/servers (name, description, player count, join address). Needs `LiveMap.Enabled` and the live-map TCP port reachable from the internet. |
+| `PublicListing.Description` | | Short description for the server list (up to 200 characters). |
 
 ### Coop
 
@@ -125,7 +144,12 @@ exactly as in normal play.
 | `CovenBonusPerMember` | `0.1` | +10% kill and skill XP per nearby member, and a 10% bonus-harvest chance per nearby member. |
 | `CovenSkillShare` | `0.25` | Nearby members receive 25% of the skill XP (gathering, crafting, taming...) a member earns. |
 | `BedSpawn` | `true` | Press interact on a bed to make it your spawn point: when you respawn after dying you wake up on that bed instead of at your last hearth. Each player has their own bed; any bed can be used by anyone. Dungeon checkpoints still come first, and a revive by a friend still happens on the spot. Destroying the bed clears the spawn point. |
-| `MapMarkers` | `true` | Left-click the world map to mark a spot for everyone (R or the gamepad Reset button marks the centre of the view; click your own marker, or press R on it, to remove it). Each player has one marker. Everyone sees it as a beam of light in the owner's player colour, on the world map and on the compass at any distance, with the owner's name. Markers are saved with the world. Teammates are always shown on the compass at any distance with their names, and the world map shows their names under their icons (client side, no setting). |
+| `MapMarkers` | `true` | Left-click the world map to mark a spot for everyone (R or the gamepad Reset button marks the centre of the view; click one of your own markers, or press R on it, to remove it). A bar at the bottom of the map picks the marker type: Meet here (in the owner's player colour), Danger (orange), Loot (gold) or Base (blue), each with its own icon. Each player can have `MaxMarkersPerPlayer` markers. Everyone sees each marker as a beam of light, on the world map and on the compass at any distance, with the owner's name. Markers are saved with the world. Teammates are always shown on the compass at any distance with their names, and the world map shows their names under their icons (client side, no setting). |
+| `MaxMarkersPerPlayer` | `3` | How many map markers each player can have at once (1-10); placing another removes their oldest. |
+| `DeathMarkers` | `true` | When a player goes down, everyone gets a notice and a crimson beam, map icon and compass marker ("Name is down") at that spot, so friends can come and revive them. A revive removes it. After a respawn elsewhere it moves to the grave holding the items they dropped ("Name's grave") and stays until the grave is emptied; the owner can also click it on the map to remove it. |
+| `SleepThroughNight` | `true` | At night (20:00 to 6:00), pressing interact on a bed also lies you down to sleep (it still sets your spawn point). When every living player online is asleep, everyone's screen fades and the clock jumps to 7:00. Moving away from the bed gets you up. |
+| `Pings` | `true` | The game's own ping (middle mouse button) only shows to players nearby. With this on, everyone also gets a short beam, a compass marker at any distance and a map icon for 10 seconds, labelled with who pinged what ("Name: Enemy", "Chest", "Resource", ...). A pinged creature is followed. |
+| `QuickStack` | `true` | A **Quick Stack** button next to the inventory's Sort Inventory button moves items from your bag (not the hotbar) into chests within 15 m that already hold the same kind of item. |
 | `LuminaryRespec` | `true` | Take luminaries back for free, for yourself and for your familiars: right-click an allocated luminary to refund its point (gamepad: the menu's Undo action on the selected one); press R (the menu's Reset action) in a luminary menu and confirm to refund every luminary in it. A luminary that another one still depends on has to wait until that one is taken back. Free skill-reward luminaries are kept. |
 
 World-wide effects of quests (key items, corruption events, global narration) happen once per
@@ -153,6 +177,14 @@ world, not once per player.
   `CompassIconWidget.as`, `CompassIconComponent.as`).
 * Co-op notices (spawn point set, already looted, ...) use the quest banner with their own title and stay up
   longer (`OnScreenMessage.as`, `GlowingTextWidget.as`).
+* Marker types, death markers and long-range pings (`WSMapMarkers.as`): the game's ping (`PlayerPingAbility.as`)
+  also tells the server, which shares it with everyone; graves are the game's own grave chests.
+* Sleep through the night (`WSSleep.as`), quick stack (`WSQuickStack.as`), and the player list: hold **P** to see
+  everyone online with level, health, ping, distance and direction, and who is down or asleep (`WSPlayerList.as`).
+* Version check (`WSVersion.as`): the server publishes its mod version and every game compares it with its own.
+  A game with another version leaves and the main menu explains why, with an **Update now** button that starts
+  the Co-op Mod updater. Games from before 0.0.50 get a notice that they need the new mod. Players the server
+  turns away (whitelist, ban, full, wrong password) see the reason on the main menu.
 
 ## Troubleshooting
 
@@ -186,6 +218,12 @@ WSDS keeps a server up to date by itself: every few hours it looks at the latest
 When a newer version is out (and, by default, nobody is online) it downloads `WSDS-Server-Update-<version>.zip`,
 checks it against `SHA256SUMS.txt`, saves and stops the server, installs it and restarts. Settings > Updates
 has the options and "Check now" / "Update now", which also work for a remote server.
+
+Players get updates through the Co-op Mod updater (installed by Witchspire Co-op Mod Setup 0.0.50 and later).
+Each time Witchspire reaches the main menu it runs `wscoop-update://check`, which looks at the same releases
+and stays silent unless there is a newer version. Updating downloads `WSCoop-Client-Update-<version>.zip`,
+checks it against `SHA256SUMS.txt`, closes Witchspire, runs `Install.ps1` and offers to start the game again.
+On a PC that runs a WSDS server the updater leaves the mod to WSDS.
 
 Witchspire is a trademark of its respective owners. This is an unofficial fan project and is not
 affiliated with or endorsed by the game's developers or publishers.

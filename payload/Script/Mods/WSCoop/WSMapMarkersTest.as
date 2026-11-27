@@ -9,7 +9,8 @@ namespace WSMapMarkersTest
         return Out;
     }
 
-    // markertest list | set <player> [dx dy] | clear <player>
+    // markertest list | set <player> [dx dy] [type] | clear <player> | ping <player> [dx dy] | kill <player>
+    //            | deaths | sleep <player> | sleepers | quickstack <player> | infos
     FString Run(const TArray<FString>& Args, APlayerCharacter P)
     {
         AWSCoopManager Manager = WSCoop::GetManager();
@@ -20,16 +21,24 @@ namespace WSMapMarkersTest
         if (Action == "list")
         {
             const FString All = WSMapMarkersTest::JoinAll(Manager.MapMarkers, Sep);
-            return f"enabled={Manager.bMapMarkersEnabled} markers={Manager.MapMarkers.Num()}: {All}";
+            const FString PingList = WSMapMarkersTest::JoinAll(Manager.Pings, Sep);
+            return f"enabled={Manager.bMapMarkersEnabled} markers={Manager.MapMarkers.Num()}: {All} | pings={Manager.Pings.Num()}: {PingList}";
         }
+        if (Action == "deaths")
+            return f"deaths={Manager.DeathMarkers.Num()}: {WSMapMarkersTest::JoinAll(Manager.DeathMarkers, Sep)}";
+        if (Action == "infos")
+            return f"infos={Manager.PlayerInfos.Num()}: {WSMapMarkersTest::JoinAll(Manager.PlayerInfos, Sep)} hour={WSSleep::Hour()} night={WSSleep::IsNight()} skips={Manager.NightSkips}";
+        if (Action == "sleepers")
+            return f"sleepers={UWSSleepSubsystem::Get().NumSleepers()} hour={WSSleep::Hour()}";
         if (P == nullptr)
             return "FAIL no such player";
         APlayerController PC = Cast<APlayerController>(P.Controller);
+        const float DX = Args.Num() >= 5 ? float(String::Conv_StringToDouble(Args[3])) : 3000.0;
+        const float DY = Args.Num() >= 5 ? float(String::Conv_StringToDouble(Args[4])) : 0.0;
         if (Action == "set")
         {
-            const float DX = Args.Num() >= 5 ? float(String::Conv_StringToDouble(Args[3])) : 3000.0;
-            const float DY = Args.Num() >= 5 ? float(String::Conv_StringToDouble(Args[4])) : 0.0;
-            WSMapMarkers::ServerSet(PC, P.GetActorLocation() + FVector(DX, DY, 0), false);
+            const FString Type = Args.Num() >= 6 ? Args[5] : "meet";
+            WSMapMarkers::ServerEdit(PC, P.GetActorLocation() + FVector(DX, DY, 0), Type, -1);
             const FString All = WSMapMarkersTest::JoinAll(Manager.MapMarkers, Sep);
             return f"markers={Manager.MapMarkers.Num()}: {All}";
         }
@@ -37,6 +46,55 @@ namespace WSMapMarkersTest
         {
             WSMapMarkers::ServerSet(PC, FVector::ZeroVector, true);
             return f"markers={Manager.MapMarkers.Num()}";
+        }
+        if (Action == "ping")
+        {
+            WSMapMarkers::OnVanillaPing(P, nullptr, P.GetActorLocation() + FVector(DX, DY, 0));
+            return f"pings={Manager.Pings.Num()}: {WSMapMarkersTest::JoinAll(Manager.Pings, Sep)}";
+        }
+        if (Action == "kill")
+        {
+            P.AbilityComp.SetAttributeBaseValue(UHealthAttributeSet::GetHealthAttribute(), 0);
+            if (P.IsAlive())
+                P.AbilityComp.AddGameplayTag(GameplayTags::Status_Dead);
+            return f"alive={P.IsAlive()}";
+        }
+        if (Action == "sleep")
+        {
+            UWSSleepSubsystem::Get().Lie(P);
+            return f"sleepers={UWSSleepSubsystem::Get().NumSleepers()} hour={WSSleep::Hour()} skips={Manager.NightSkips}";
+        }
+        if (Action == "chest")
+        {
+            // A chest next to the player, seeded with the stack in the player's hotbar slot 1.
+            UClass ChestClass = Cast<UClass>(LoadObject(UClass, "/Game/Gameplay/Crafting/Chest/BP_Chest.BP_Chest_C"));
+            if (ChestClass == nullptr)
+                return "FAIL no chest class";
+            AActor Chest = SpawnActor(ChestClass, P.GetActorLocation() + FVector(250, 0, -80), FRotator(0, 0, 0));
+            UInventoryComponent Store = Chest != nullptr ? UInventoryComponent::Get(Chest) : nullptr;
+            if (Store == nullptr)
+                return "FAIL chest has no inventory";
+            UItemStack Seed = P.InventoryComp.GetItemStackAtSlot(1);
+            if (Seed != nullptr)
+                Store.TransferItemStack(Seed);
+            const FString SeedName = Seed != nullptr ? Seed.GetItemTag().ToString() : "nothing";
+            return f"chest {Chest.GetName()} at {Chest.GetActorLocation()} seeded with {SeedName}, types={Store.GetAllItemTypes().Num()}";
+        }
+        if (Action == "bag")
+        {
+            FString Out = "";
+            for (int Slot = 0; Slot < P.InventoryComp.GetCapacity(); Slot++)
+            {
+                UItemStack S = P.InventoryComp.GetItemStackAtSlot(Slot);
+                if (S != nullptr)
+                    Out += f" {Slot}:{S.GetItemTag().ToString()}x{S.GetStackSize()}";
+            }
+            return f"bag{Out}";
+        }
+        if (Action == "quickstack")
+        {
+            WSQuickStack::ServerQuickStack(PC);
+            return "done (see log)";
         }
         return "FAIL unknown action";
     }
@@ -74,7 +132,9 @@ class UWSMapMarkersUITest : UScriptWorldSubsystem
             APlayerCameraManager Cam = Gameplay::GetPlayerCameraManager(0);
             const float Yaw = (Cam != nullptr ? Cam.GetCameraRotation().Yaw : P.ActorRotation.Yaw) + String::Conv_StringToDouble(WSDS::Param("WSBeamYaw", "0"));
             const FVector Spot = P.ActorLocation + FRotator(0, Yaw, 0).ForwardVector * String::Conv_StringToDouble(WSDS::Param("WSMarkerDistance", "4000"));
-            WSCoop::Info(f"MARKERUI placing a marker at {Spot} the way a map click does");
+            const FString Type = WSDS::Param("WSMarkerType", "meet");
+            WSMapMarkers::View().Select(Type);
+            WSCoop::Info(f"MARKERUI placing a {Type} marker at {Spot} the way a map click does");
             WSMapMarkers::OnMapClicked(Spot);
         }
         else if (Step == 2 || Step == 3)
@@ -86,7 +146,7 @@ class UWSMapMarkersUITest : UScriptWorldSubsystem
             {
                 for (const FRegisteredWorldMapElement& E : MapManager.GetRegisteredMapElements())
                 {
-                    if (E.UniqueId.ToString().StartsWith(WSMapMarkers::ElementPrefix) && WSMapMarkers::View().IsOwnMarkerElement(E.UniqueId))
+                    if (E.UniqueId.ToString().StartsWith(WSMapMarkers::ElementPrefix + "m_"))
                     {
                         WSCoop::Info(f"MARKERUI clicking own map icon {E.UniqueId}");
                         WSMapMarkers::OnElementClicked(E.UniqueId);
@@ -109,7 +169,9 @@ class UWSMapMarkersUITest : UScriptWorldSubsystem
         {
             const FString Sep = "; ";
             const FString All = WSMapMarkersTest::JoinAll(Manager.MapMarkers, Sep);
-            Text += f" enabled={Manager.bMapMarkersEnabled} entries={Manager.MapMarkers.Num()} [{All}]";
+            const FString Deaths = WSMapMarkersTest::JoinAll(Manager.DeathMarkers, Sep);
+            const FString PingList = WSMapMarkersTest::JoinAll(Manager.Pings, Sep);
+            Text += f" enabled={Manager.bMapMarkersEnabled} entries={Manager.MapMarkers.Num()} [{All}] deaths=[{Deaths}] pings=[{PingList}] version={Manager.ServerModVersion} infos={Manager.PlayerInfos.Num()}";
         }
         TArray<AActor> Beams;
         UClass BeamClass = Cast<UClass>(LoadObject(UClass, WSMapMarkers::BeamClassPath));

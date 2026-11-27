@@ -14,6 +14,7 @@ let status = "stopped";
 let players = [];
 let items = [];
 let bans = [];
+let whitelist = { enabled: false, entries: [] };
 let maxPlayers = 0;
 
 // ---------------------------------------------------------------- fonts from the game install
@@ -68,11 +69,20 @@ const SCHEMA = [
     { k: "Coop.CovenSkillShare", label: "Skill XP shared with nearby members", type: "number", step: 0.05, min: 0, max: 1 },
     { k: "Coop.BedSpawn", label: "Bed spawn points", type: "toggle", help: "Press interact on a bed to respawn there after dying instead of at your last hearth." },
     { k: "Coop.LuminaryRespec", label: "Luminary respec", type: "toggle", help: "Right-click a luminary to take it back and get its point back; R in a luminary menu resets that menu. Works for player and familiar luminaries." },
-    { k: "Coop.MapMarkers", label: "Map markers", type: "toggle", help: "Left-click the world map to mark a spot for everyone: a beam of light in your player colour, shown on every player's map and compass with your name." },
+    { k: "Coop.MapMarkers", label: "Map markers", type: "toggle", help: "Left-click the world map to mark a spot for everyone. A bar on the map picks the type - Meet here, Danger, Loot or Base - each with its own icon and colour. It shows as a beam of light and on every player's map and compass with your name." },
+    { k: "Coop.MaxMarkersPerPlayer", label: "Map markers per player", type: "number", min: 1, max: 10, help: "How many map markers each player can have at once; placing another removes their oldest." },
+    { k: "Coop.DeathMarkers", label: "Death markers", type: "toggle", help: "When a player goes down, everyone sees a red beam, map icon and compass marker there, so friends can revive them. After a respawn it moves to the grave with their dropped items until the grave is emptied." },
+    { k: "Coop.Pings", label: "Pings", type: "toggle", help: "The game's own ping (middle mouse button) also reaches players far away: a short beam, a compass marker and a map icon for 10 seconds, labelled with who pinged what." },
+    { k: "Coop.SleepThroughNight", label: "Sleep through the night", type: "toggle", help: "At night, interacting with a bed lies you down to sleep. When every player online is asleep, the night is skipped to 7:00." },
+    { k: "Coop.QuickStack", label: "Quick stack", type: "toggle", help: "A Quick Stack button in the inventory moves items from the bag into chests within 15 m that already hold the same kind of item." },
   ]},
   { section: "Administration", step: "Admin", fields: [
     { k: "Coop.CoOwnerPermissions", label: "Who may build in sanctuaries", type: "select", options: [["AllPlayers", "Everyone (co-owners)"], ["AdminsOnly", "Admins only"]] },
     { k: "Coop.Admins", label: "Admins", type: "text", help: "Comma-separated player names or ids (used by 'Admins only')." },
+  ]},
+  { section: "Joining", step: null, fields: [
+    { k: "Motd", label: "Message of the day", type: "textarea", maxlength: 500, help: "Shown to every player when they join. Leave empty for none. Takes effect right away, no restart needed." },
+    { k: "Whitelist.Enabled", label: "Whitelist", type: "toggle", help: "Only players on the whitelist can join. Manage the list on the Bans page. Takes effect right away, no restart needed." },
   ]},
   { section: "Saving & Performance", step: null, fields: [
     { k: "AutoSaveSeconds", label: "Autosave interval (seconds)", type: "number", min: 30, max: 3600, step: 30 },
@@ -96,6 +106,10 @@ const SCHEMA = [
     { k: "LiveMap.Enabled", label: "Live map on wsdsmaps.com", type: "toggle", help: "Anyone with your server's join details (and join password, if set) can open a live map at wsdsmaps.com: where players are, and each player's chests, satchels and quests. The server only sends positions while someone is watching." },
     { k: "LiveMap.Port", label: "Live map port (TCP)", type: "number", min: 0, max: 65535, help: "0 = the same number as the game port. Allow this TCP port in your router / host firewall as well as the game's UDP port. Restart WSDS after changing." },
   ]},
+  { section: "Public server list", step: null, fields: [
+    { k: "PublicListing.Enabled", label: "List this server on wsdsmaps.com/servers", type: "toggle", help: "Shows this server's name, description, player count and join address on wsdsmaps.com/servers so other players can find it. Needs the live map, reachable from the internet." },
+    { k: "PublicListing.Description", label: "Description", type: "text", maxlength: 200, help: "Up to 200 characters, e.g. what kind of server it is, rules, when you usually play." },
+  ], extra: () => `<div class="field rsblock"><span class="lbl">Status</span><span id="listState" class="muted small">-</span></div>` },
   { section: "Advanced", step: null, fields: [
     { k: "ConsoleVerbosity", label: "Console default view", type: "select", options: [["important", "Important lines"], ["all", "Everything"]] },
     { k: "ServerDataDir", label: "Server data folder", type: "text", help: "Saves, logs and server config. Relative to the mod folder. Keep it on the game's drive." },
@@ -120,8 +134,10 @@ function fieldHtml(f) {
     input = `<select id="${id}">${f.options.map(([val, name]) => `<option value="${val}" ${String(v) === val ? "selected" : ""}>${name}</option>`).join("")}</select>`;
   } else if (f.type === "world") {
     input = `<input type="text" id="${id}" list="worldList" value="${esc(v ?? "")}"><datalist id="worldList">${worlds.map((w) => `<option value="${esc(w)}">`).join("")}</datalist>`;
+  } else if (f.type === "textarea") {
+    input = `<textarea id="${id}" rows="3" ${f.maxlength ? `maxlength="${f.maxlength}"` : ""}>${esc(v ?? "")}</textarea>`;
   } else {
-    const attrs = ["min", "max", "step"].filter((a) => f[a] !== undefined).map((a) => `${a}="${f[a]}"`).join(" ");
+    const attrs = ["min", "max", "step", "maxlength"].filter((a) => f[a] !== undefined).map((a) => `${a}="${f[a]}"`).join(" ");
     input = `<input type="${f.type}" id="${id}" value="${esc(v ?? "")}" ${attrs}>`;
   }
   return `<label class="field"><span class="lbl">${f.label}</span>${input}${help}</label>`;
@@ -147,6 +163,7 @@ function renderSettings() {
   $("#updCheck").onclick = () => refreshUpdate(true);
   $("#updApply").onclick = applyUpdate;
   showUpdate();
+  refreshListing();
 }
 async function saveSettings() {
   SCHEMA.forEach((s) => readFields(s.fields));
@@ -156,6 +173,21 @@ async function saveSettings() {
   $("#sSaved").textContent = status === "stopped" ? "Saved." : "Saved - restart the server to apply.";
   setTimeout(() => ($("#sSaved").textContent = ""), 4000);
   refreshHeader();
+  loadWhitelist();
+  setTimeout(refreshListing, 8000);
+}
+
+// ---------------------------------------------------------------- public server list status
+async function refreshListing() {
+  const el = $("#listState");
+  if (!el) return;
+  let r;
+  try { r = await api("listing_status"); } catch { el.textContent = "Not available on this server's WSDS version."; return; }
+  const when = r.last?.time ? ` (checked ${new Date(r.last.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : "";
+  el.textContent = !r.enabled ? "Not listed (turned off)."
+    : !r.liveMap ? "Not listed: the live map is turned off, and the server list needs it (see Live map above)."
+    : r.last ? `${r.last.message}${when}` : "Announcing this server to wsdsmaps.com shortly...";
+  el.style.color = r.enabled && r.liveMap && r.last ? (r.last.code === "listed" ? "var(--green)" : "var(--gold)") : "";
 }
 
 // ---------------------------------------------------------------- first-time setup wizard
@@ -259,6 +291,7 @@ function renderPlayers() {
         <button class="btn small dark" data-act="tp" data-i="${i}">Teleport</button>
         <button class="btn small dark" data-act="heal" data-i="${i}">Heal</button>
         <button class="btn small dark" data-act="msg" data-i="${i}">Message</button>
+        ${onWhitelist(p) ? `<button class="btn small dark" disabled title="Already on the whitelist">Whitelisted</button>` : `<button class="btn small dark" data-act="wl" data-i="${i}">Whitelist</button>`}
         <button class="btn small dark" data-act="kick" data-i="${i}">Kick</button>
         <button class="btn small danger" data-act="ban" data-i="${i}">Ban</button>
       </div></td></tr>`;
@@ -285,6 +318,11 @@ const closeModal = () => $("#overlay").classList.remove("show");
 function playerAction(act, p) {
   const who = q(p.key || p.name);
   if (act === "heal") return adminCmd(`heal ${who}`).then(() => activity(`Healed ${p.name}`, "ok"));
+  if (act === "wl") return call("whitelist_add", { key: p.key || "", name: p.name || "" }).then(() => {
+    activity(`Added ${p.name} to the whitelist`, "ok");
+    toast(whitelist.enabled ? `${p.name} is on the whitelist.` : `${p.name} is on the whitelist. The whitelist is off, so it is not enforced yet (Settings > Joining).`);
+    loadWhitelist();
+  });
   if (act === "give") {
     let selected = null;
     modal(`Give items to ${p.name}`, `
@@ -345,6 +383,136 @@ function renderBans() {
   $("#banRows").innerHTML = bans.map((b) => `<tr><td class="pname">${esc(b.name || "?")}</td><td class="muted small">${esc(b.key)}</td><td>${esc(b.reason || "")}</td>
     <td class="muted small">${b.time ? new Date(b.time * 1000).toLocaleString() : ""}</td><td class="right"><button class="btn small dark" data-unban="${esc(b.key)}">Unban</button></td></tr>`).join("");
   $$("[data-unban]").forEach((x) => (x.onclick = async () => { await call("unban", { key: x.dataset.unban }); activity(`Unbanned ${x.dataset.unban}`, "ok"); }));
+}
+
+// ---------------------------------------------------------------- whitelist (Bans page)
+const onWhitelist = (p) => whitelist.entries.some((e) => (e.key && e.key === p.key) || (!e.key && e.name && p.name && e.name.toLowerCase() === p.name.toLowerCase()));
+async function loadWhitelist() {
+  try { whitelist = await api("whitelist"); } catch { whitelist = { enabled: false, entries: [], unsupported: true }; }
+  renderWhitelist(); renderPlayers();
+}
+function renderWhitelist() {
+  const on = whitelist.enabled, list = whitelist.entries || [];
+  $("#wlBadge").textContent = on ? "On" : "Off";
+  $("#wlBadge").className = "wlbadge" + (on ? " on" : "");
+  $("#wlInfo").className = "small" + (on ? " muted" : " off");
+  $("#wlInfo").textContent = whitelist.unsupported ? "This server's WSDS version has no whitelist yet - update it first."
+    : on ? "The whitelist is on: only the players below can join."
+    : "The whitelist is off, so this list is not enforced: anyone can join. Turn it on in Settings > Joining.";
+  $("#wlEmpty").style.display = list.length ? "none" : "block";
+  $("#wlRows").innerHTML = list.map((e, i) => `<tr><td class="pname">${esc(e.name || "?")}</td>
+    <td class="muted small">${e.key ? esc(e.key) : "added by name - matched when they join"}</td>
+    <td class="muted small">${e.time ? new Date(e.time * 1000).toLocaleString() : ""}</td>
+    <td class="right"><button class="btn small dark" data-wlrm="${i}">Remove</button></td></tr>`).join("");
+  $$("[data-wlrm]").forEach((x) => (x.onclick = async () => {
+    const e = list[Number(x.dataset.wlrm)];
+    await call("whitelist_remove", e.key ? { key: e.key } : { name: e.name });
+    activity(`Removed ${e.name || e.key} from the whitelist`, "ok");
+    loadWhitelist();
+  }));
+}
+async function addWhitelistName() {
+  const name = $("#wlName").value.trim();
+  if (!name) return toast("Type a player name first.", true);
+  await call("whitelist_add", { name });
+  $("#wlName").value = "";
+  activity(`Added ${name} to the whitelist`, "ok");
+  loadWhitelist();
+}
+
+// ---------------------------------------------------------------- scheduled restarts
+const RS_FIELDS = [
+  { k: "Restarts.Enabled", label: "Restart the server on a schedule", type: "toggle", help: "Off by default. Players are warned before every restart." },
+  { k: "Restarts.EveryHours", label: "Also restart every (hours the server has been up)", type: "number", min: 0, max: 720, step: 1, help: "0 = off. Counted from when the server started, e.g. 12 restarts it twice a day however long it has been running." },
+  { k: "Restarts.WarnMinutes", label: "Warn players (minutes before)", type: "text", help: "For example 15, 5, 1: a notice on every player's screen at each of these times." },
+  { k: "Restarts.Message", label: "Warning message", type: "text", maxlength: 200, help: "{minutes} becomes the time left, e.g. \"15 minutes\" or \"1 minute\"." },
+  { k: "Restarts.SkipWhenEmpty", label: "Wait until nobody is online", type: "toggle", help: "At the planned time the server restarts only if nobody is online; otherwise it waits and restarts as soon as the last player leaves. If players are still on 2 hours later, it restarts anyway after the usual warnings. When this is off, players are warned and the server restarts on time." },
+];
+let rsTimes = [];
+let rsState = null, rsFetched = 0, rsTimer = null;
+const rsPad = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim()); return m ? `${m[1].padStart(2, "0")}:${m[2]}` : t.trim(); };
+const rsValid = (t) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(t.trim());
+function fmtIn(s) {
+  s = Math.max(0, Math.round(s));
+  if (s >= 3600) return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+  if (s >= 600) return `${Math.round(s / 60)} min`;
+  if (s >= 60) return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`;
+  return `${s} s`;
+}
+function renderRestartForm() {
+  const r = config.Restarts || {};
+  rsTimes = (r.Times || []).slice();
+  $("#rsForm").innerHTML = `<h3>Schedule</h3>${fieldHtml(RS_FIELDS[0])}
+    <div class="cols"><div class="rsblock"><span class="lbl">Every day at</span><div id="rsTimes"></div>
+      <button class="btn small dark" id="rsAddTime">Add time</button>
+      <span class="help">The server's own clock, 24-hour (e.g. 05:00 or 17:30).<span id="rsClock"></span></span></div>
+    ${fieldHtml(RS_FIELDS[1])}</div>
+    <h3>Warnings</h3><div class="cols">${fieldHtml(RS_FIELDS[2])}${fieldHtml(RS_FIELDS[3])}</div>${fieldHtml(RS_FIELDS[4])}`;
+  const w = $("#f_Restarts_WarnMinutes"); if (w) w.value = (r.WarnMinutes || []).join(", ");
+  drawTimes();
+  $("#rsAddTime").onclick = () => { readTimes(); rsTimes.push(""); drawTimes(); $$(".rsTime").at(-1)?.focus(); };
+}
+function readTimes() { rsTimes = $$(".rsTime").map((i) => i.value); }
+function drawTimes() {
+  $("#rsTimes").innerHTML = rsTimes.length ? rsTimes.map((t, i) => `<div class="timerow"><input type="text" class="rsTime" value="${esc(t)}" placeholder="05:00" maxlength="5"><button class="btn small dark" data-rmtime="${i}">Remove</button></div>`).join("")
+    : `<div class="muted small timerow">No daily time.</div>`;
+  $$("[data-rmtime]").forEach((b) => (b.onclick = () => { readTimes(); rsTimes.splice(Number(b.dataset.rmtime), 1); drawTimes(); }));
+}
+async function saveRestarts() {
+  readTimes();
+  const times = rsTimes.map((t) => t.trim()).filter(Boolean);
+  const bad = times.find((t) => !rsValid(t));
+  if (bad) return toast(`"${bad}" is not a time. Use the 24-hour clock, e.g. 05:00 or 17:30.`, true);
+  const warn = $("#f_Restarts_WarnMinutes").value.split(/[\s,;]+/).filter(Boolean).map(Number);
+  if (warn.some((n) => !Number.isInteger(n) || n < 1 || n > 120)) return toast("Warning times are whole minutes from 1 to 120, e.g. 15, 5, 1.", true);
+  readFields(RS_FIELDS);
+  config.Restarts.Times = [...new Set(times.map(rsPad))].sort();
+  config.Restarts.WarnMinutes = [...new Set(warn)].sort((a, b) => b - a);
+  config.Restarts.EveryHours = Math.max(0, Number(config.Restarts.EveryHours) || 0);
+  await call("save_config", { config });
+  renderRestartForm();
+  $("#rsSaved").textContent = "Saved.";
+  setTimeout(() => ($("#rsSaved").textContent = ""), 4000);
+  setTimeout(loadRestarts, 2500);
+}
+async function loadRestarts() {
+  try { rsState = await api("restarts_status"); rsFetched = Date.now(); }
+  catch (e) { rsState = null; $("#rsStatus").textContent = `Scheduled restarts are not available: ${e}`; return; }
+  showRestarts();
+}
+function showRestarts() {
+  const st = rsState;
+  if (!st) return;
+  const gone = (Date.now() - rsFetched) / 1000;
+  const left = (s) => fmtIn(s - gone);
+  const n = st.next, p = st.pending;
+  let text, gem = "off";
+  if (p && p.manual) { text = `Restarting in ${left(p.in)} (started by an admin).`; gem = "wait"; }
+  else if (p && p.waiting) { text = `Waiting for the last player to leave, then restarting (at the latest ${n.latestLabel}, in ${left(n.latestIn)}).`; gem = "wait"; }
+  else if (p) { text = `Restarting in ${left(p.in)} (${p.reason}). Players have been warned.`; gem = "wait"; }
+  else if (!st.enabled) text = "Scheduled restarts are off.";
+  else if (n) {
+    text = `Next restart: ${n.label} (in ${left(n.in)}).`;
+    if (n.waitEmpty) text += " If players are online then, it waits for them to leave (at the latest 2 hours later).";
+    if (!st.running) text += " The server is not running right now.";
+    gem = "on";
+  } else if (st.everyHours > 0 && !st.running) text = "Scheduled restarts are on. The next one is planned once the server is running.";
+  else text = "Scheduled restarts are on, but no restart is planned: add a daily time or set 'every N hours', then save.";
+  $("#rsStatus").textContent = text;
+  $("#rsGem").className = "gem " + gem;
+  $("#rsCancel").style.display = p ? "" : "none";
+  $("#rsCancel").textContent = p && !p.manual ? "Skip this restart" : "Cancel restart";
+  $("#rsNow").disabled = !st.running || !!(p && p.manual);
+  const clock = $("#rsClock"); if (clock) clock.textContent = st.serverTime ? ` It is ${st.serverTime} there now.` : "";
+}
+function restartSoon() {
+  modal("Restart in 5 minutes?", `<p>Every player gets a notice now and again before the restart. Then the world is saved and the server restarts; players can rejoin after about a minute.</p>${players.length ? `<p class="gold">${players.length} player(s) online.</p>` : ""}`,
+    [["Restart in 5 minutes", "", async () => { await call("restart_countdown", { minutes: 5 }); activity("Restart in 5 minutes"); loadRestarts(); }], ["Cancel", "dark"]]);
+}
+async function cancelRestart() {
+  await call("restart_cancel");
+  activity("Restart cancelled", "ok");
+  loadRestarts();
 }
 
 // ---------------------------------------------------------------- console
@@ -431,6 +599,13 @@ function showPage(name) {
   $$(".menu a").forEach((a) => a.classList.toggle("active", a.dataset.page === name));
   $$(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + name));
   if (name === "backups") loadBackups();
+  if (name === "bans") loadWhitelist();
+  clearInterval(rsTimer); rsTimer = null;
+  if (name === "restarts") {
+    renderRestartForm(); loadRestarts();
+    let n = 0;
+    rsTimer = setInterval(() => { if (++n % 5 === 0) loadRestarts(); else showRestarts(); }, 1000);
+  }
   if (name === "map") mountMap(); else unmountMap();
   if (name === "console") $("#console").scrollTop = $("#console").scrollHeight;
 }
@@ -478,7 +653,7 @@ window.addEventListener("message", (e) => {
 
 // ---------------------------------------------------------------- connections (this PC / remote servers)
 let remotes = [];
-let pollCursor = { since: 0, resultsSince: 0, itemsVer: -1, bansVer: -1, busy: false, failed: 0 };
+let pollCursor = { since: 0, resultsSince: 0, itemsVer: -1, bansVer: -1, whitelistVer: -1, busy: false, failed: 0 };
 async function refreshRemotes() {
   remotes = await invoke("list_remotes");
   const opts = [`<option value="local">This PC</option>`];
@@ -495,7 +670,7 @@ async function loadConnection() {
     const snap = await api("snapshot");
     consoleLines = []; $("#console").innerHTML = "";
     appendConsole(snap.console);
-    pollCursor = { since: snap.consoleNext, resultsSince: snap.resultsNext, itemsVer: snap.itemsVer, bansVer: snap.bansVer, busy: false, failed: 0 };
+    pollCursor = { since: snap.consoleNext, resultsSince: snap.resultsNext, itemsVer: snap.itemsVer, bansVer: snap.bansVer, whitelistVer: snap.whitelistVer, busy: false, failed: 0 };
     applyState(snap.state); items = snap.items; bans = snap.bans;
     applyStatus({ status: snap.status, uptime: snap.uptime });
   } catch (e) {
@@ -503,6 +678,8 @@ async function loadConnection() {
     if (conn.mode !== "local") { conn = { mode: "local", name: "This PC" }; await refreshRemotes(); return loadConnection(); }
   }
   renderSettings(); renderPlayers(); renderBans(); refreshHeader();
+  loadWhitelist();
+  if ($("#page-restarts").classList.contains("active")) { renderRestartForm(); loadRestarts(); }
   refreshUpdate(false);
   if ($("#page-map").classList.contains("active")) mountMap();
 }
@@ -529,6 +706,7 @@ async function pollRemote() {
     applyState(p.state);
     if (p.itemsVer !== pollCursor.itemsVer) { items = await api("items"); pollCursor.itemsVer = p.itemsVer; }
     if (p.bansVer !== pollCursor.bansVer) { bans = await api("bans"); pollCursor.bansVer = p.bansVer; renderBans(); }
+    if (p.whitelistVer !== undefined && p.whitelistVer !== pollCursor.whitelistVer) { pollCursor.whitelistVer = p.whitelistVer; loadWhitelist(); }
   } catch (e) {
     if (++pollCursor.failed === 3) toast(`Lost contact with ${conn.name}: ${e}`, true);
     $("#tStatus").textContent = "Unreachable"; $("#tGem").className = "gem off";
@@ -609,6 +787,11 @@ async function init() {
   $$("[data-open]").forEach((b) => (b.onclick = () => invoke("open_folder", { which: b.dataset.open }).catch((e) => toast(String(e), true))));
   $("#bkRefresh").onclick = loadBackups;
   $("#bkCreate").onclick = createBackup;
+  $("#wlAdd").onclick = addWhitelistName;
+  $("#wlName").onkeydown = (e) => { if (e.key === "Enter") addWhitelistName(); };
+  $("#rsSave").onclick = saveRestarts;
+  $("#rsNow").onclick = restartSoon;
+  $("#rsCancel").onclick = cancelRestart;
   $("#playerRows").onclick = (e) => { const b = e.target.closest("[data-act]"); if (b) playerAction(b.dataset.act, players[Number(b.dataset.i)]); };
   $("#cSend").onclick = runConsoleCommand;
   $("#cInput").onkeydown = (e) => { if (e.key === "Enter") runConsoleCommand(); };
@@ -629,6 +812,7 @@ async function init() {
   await listen("state", local((e) => applyState(e.payload)));
   await listen("items", local((e) => { items = e.payload; activity(`Item catalogue loaded (${items.length} items)`); }));
   await listen("bans", local((e) => { bans = e.payload; renderBans(); }));
+  await listen("whitelist", local((e) => { whitelist = e.payload; renderWhitelist(); renderPlayers(); }));
   await listen("result", local((e) => showResult(e.payload)));
   await listen("closing", () => $("#closing").classList.add("show"));
 

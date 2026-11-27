@@ -112,3 +112,17 @@ main { flex: 1; padding: 26px 30px 26px 10px; overflow: auto; }
 .mapframe { display: flex; flex-direction: column; height: calc(100vh - 120px); }
 .maphost { flex: 1; min-height: 300px; margin-top: 10px; border-radius: 8px; overflow: hidden; }
 .maphost iframe { width: 100%; height: 100%; border: 0; display: block; background: #0e3a42; }
+
+/* stacked frames (Bans + Whitelist) */
+.frame.stacked { margin-top: 26px; }
+.wlbadge { font-size: 12px; padding: 2px 10px; border-radius: 9px; border: 1px solid var(--gold-dim); color: var(--muted); }
+.wlbadge.on { color: var(--bg-0); background: var(--green); border-color: var(--green); }
+#wlInfo.off { color: var(--gold); }
+
+/* Restarts page */
+.rsstatus { display: flex; align-items: center; gap: 12px; margin: 6px 0 16px; font-size: 17px; color: var(--cream); }
+.rsblock { margin: 0 0 14px; }
+.rsblock > .lbl { display: block; color: var(--gold); font-family: var(--title-font); font-size: 15px; margin-bottom: 5px; }
+.rsblock > .help { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.timerow { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.timerow input { width: 120px; }

@@ -206,6 +206,10 @@ namespace WSAdmin
         if (PC == nullptr)
             return;
         const FText Text = FText::FromString(Reason.IsEmpty() ? "Kicked by the server admin." : Reason);
+        // Games with the version check (0.0.50+) show the reason on their main menu.
+        UWSIdentityComponent Channel = WSIdentity::GetComponent(PC);
+        if (Channel != nullptr && !Channel.ReportedModVersion.IsEmpty())
+            Channel.WSClientKickReason(Text.ToString());
         PC.ClientWasKicked(Text);
         PC.ClientReturnToMainMenuWithTextReason(Text);
         UWSAdminSubsystem::Get().ScheduleDisconnect(PC);
@@ -432,6 +436,36 @@ namespace WSAdmin
             Admin.Broadcast(JoinFrom(Args, 1));
             Result(true, Cmd, "message sent");
         }
+        else if (Cmd == "broadcasttitle" && Args.Num() >= 3)
+        {
+            Admin.Broadcast(JoinFrom(Args, 2), Args[1]);
+            Result(true, Cmd, "message sent");
+        }
+        else if (Cmd == "motd")
+        {
+            // WSDS sends line breaks as the two characters backslash + n.
+            Admin.Motd = Args.Num() >= 2 ? JoinFrom(Args, 1).Replace("\\n", "\n") : "";
+            Result(true, Cmd, Admin.Motd.IsEmpty() ? "message of the day cleared" : "message of the day set");
+        }
+        else if (Cmd == "whitelist" && Args.Num() >= 2)
+        {
+            Admin.bWhitelist = Args[1] == "on" || Args[1] == "true" || Args[1] == "1";
+            Result(true, Cmd, Admin.bWhitelist ? "whitelist on" : "whitelist off");
+        }
+        else if (Cmd == "whitelistclear")
+        {
+            Admin.Whitelist.Empty();
+            Result(true, Cmd, "whitelist cleared");
+        }
+        else if ((Cmd == "whitelistadd" || Cmd == "whitelistremove") && Args.Num() >= 2)
+        {
+            const FString Entry = JoinFrom(Args, 1).ToLower();
+            if (Cmd == "whitelistadd")
+                Admin.Whitelist.Add(Entry);
+            else
+                Admin.Whitelist.Remove(Entry);
+            Result(true, Cmd, f"{Admin.Whitelist.Num()} whitelist entries");
+        }
         else if (Cmd == "msg" && Args.Num() >= 3)
         {
             APlayerCharacter P = FindPlayer(Args[1]);
@@ -469,6 +503,13 @@ class UWSAdminSubsystem : UScriptWorldSubsystem
     TSet<FString> BannedKeys;
     int MaxPlayers = 0; // 0 = unlimited
     FString Password;
+
+    // Message of the day, shown to every player once they are in the world ("" = none).
+    FString Motd;
+    // Whitelist: player keys and player names (lower case); only enforced while bWhitelist.
+    bool bWhitelist = false;
+    TSet<FString> Whitelist;
+    private TSet<APlayerController> MotdShown;
 
     private float StateAccumulator = 0;
     private float Uptime = 0;
@@ -665,6 +706,36 @@ class UWSAdminSubsystem : UScriptWorldSubsystem
                 WSAdmin::Kick(PC, "The server is full.");
                 continue;
             }
+            if (bWhitelist && !Whitelist.Contains(Key.ToLower()) && !Whitelist.Contains(PS.GetPlayerName().ToLower()))
+            {
+                WSDS::Info(f"ACCESS: '{PS.GetPlayerName()}' ({Key}) is not on the whitelist - disconnecting");
+                WSAdmin::Kick(PC, "This server only lets in players on its whitelist.");
+                continue;
+            }
+        }
+        ShowMotd();
+    }
+
+    // The message of the day, once per connection, as soon as the player is in the world.
+    private void ShowMotd()
+    {
+        if (Motd.IsEmpty())
+            return;
+        AGameStateBase GameState = Gameplay::GetGameState();
+        if (GameState == nullptr)
+            return;
+        for (APlayerState PS : GameState.PlayerArray)
+        {
+            APlayerController PC = PS != nullptr ? PS.GetPlayerController() : nullptr;
+            if (PC == nullptr || PC.IsLocalController() || MotdShown.Contains(PC) || PendingDisconnect.Contains(PC) || !Checked.Contains(PC))
+                continue;
+            APlayerCharacter P = Cast<APlayerCharacter>(PS.GetPawn());
+            if (P == nullptr)
+                continue;
+            MotdShown.Add(PC);
+            const FString WorldName = WSDS::Param("WSWorldName", "");
+            WSCoop::Notify(P, Motd, WorldName.IsEmpty() ? "Welcome" : f"Welcome to {WorldName}");
+            WSDS::Info(f"MOTD shown to '{PS.GetPlayerName()}'");
         }
     }
 
@@ -707,10 +778,10 @@ class UWSAdminSubsystem : UScriptWorldSubsystem
 
     // Server-wide announcement. Sent to each player through their own coop channel: the game's
     // broadcast helper also draws on the host's screen, which a headless server does not have.
-    void Broadcast(const FString& Message)
+    void Broadcast(const FString& Message, const FString& Title = "Server Message")
     {
         for (APlayerCharacter P : WSCoop::GetPlayers())
-            WSCoop::Notify(P, Message, "Server Message");
+            WSCoop::Notify(P, Message, Title);
     }
 
     bool SetTimeOfDay(float Hour)

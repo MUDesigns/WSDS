@@ -4494,8 +4494,9 @@ dependencies = [
 
 [[package]]
 name = "wsds"
-version = "0.0.49"
+version = "0.0.50"
 dependencies = [
+ "chrono",
  "getrandom 0.2.17",
  "hmac",
  "pbkdf2",

@@ -507,10 +507,15 @@ fn handle(mut stream: TcpStream, s: Shared) {
             let Some(nonce) = s.live.lock().unwrap().auth.new_nonce(now) else {
                 return http_response(&mut stream, 503, &json!({ "error": "busy" }));
             };
-            http_response(&mut stream, 200, &json!({
+            let mut hello = json!({
                 "app": "WSDS", "version": VERSION, "name": cfg["WorldName"],
                 "passwordRequired": !password.is_empty(), "salt": salt, "nonce": nonce,
-            }));
+            });
+            // Public server list (opt-in): what wsdsmaps.com/servers shows about this server.
+            if let Some(listing) = crate::listing::hello_block(&cfg, crate::players_online(&s), game_running(&s)) {
+                hello["listing"] = listing;
+            }
+            http_response(&mut stream, 200, &hello);
         }
         "/map/auth" => {
             if s.live.lock().unwrap().auth_guard.blocked(&ip, now) {

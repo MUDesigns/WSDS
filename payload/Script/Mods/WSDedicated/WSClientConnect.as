@@ -71,4 +71,14 @@ class UWSClientStateSubsystem : UScriptGameInstanceSubsystem
 
     // Password typed in the Join Dedicated Server dialog (sent with the identity report).
     FString ServerPassword;
+
+    // Set when this game left a server running another mod version (see WSVersion); the main menu explains it.
+    FString VersionProblem;
+    bool bVersionUpdateHelps = false;
+
+    // Why the server disconnected this game (whitelist, ban, full, password); shown on the main menu.
+    FString KickReason;
+
+    // The main menu asked the updater for a new version this session.
+    bool bUpdateCheckDone = false;
 };

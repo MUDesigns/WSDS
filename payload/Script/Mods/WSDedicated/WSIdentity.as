@@ -114,6 +114,7 @@ class UWSIdentityComponent : UHercActorComponent
     // Server-side only.
     FString SaveName;
     FString ReportedPassword;
+    FString ReportedModVersion;
     bool bReceived = false;
     float WaitedSeconds = 0;
 
@@ -216,5 +217,47 @@ class UWSIdentityComponent : UHercActorComponent
     void ServerWSMapMarker(FVector Location, bool bClear)
     {
         WSMapMarkers::ServerSet(Cast<APlayerController>(Owner), Location, bClear);
+    }
+
+    // 0.0.50 and later. Every new RPC is named to sort after the ones above (network indexes of older RPCs stay
+    // the same, so games from before the version check still get the "update needed" notice).
+
+    // Map marker with a type (meet, danger, loot, base); RemoveId >= 0 removes that marker of this player instead.
+    UFUNCTION(Server)
+    void ServerWSMarkerEdit(FVector Location, FString Type, int RemoveId)
+    {
+        WSMapMarkers::ServerEdit(Cast<APlayerController>(Owner), Location, Type, RemoveId);
+    }
+
+    // Quick stack: move items into nearby chests that already hold the same item.
+    UFUNCTION(Server)
+    void ServerWSQuickStack()
+    {
+        WSQuickStack::ServerQuickStack(Cast<APlayerController>(Owner));
+    }
+
+    // The game's mod version (see WSVersion).
+    UFUNCTION(Server)
+    void ServerWSVersion(FString Version)
+    {
+        ReportedModVersion = Version.Left(32);
+    }
+
+    // Why the server is about to disconnect this game (shown on the main menu).
+    UFUNCTION(Client)
+    void WSClientKickReason(FString Reason)
+    {
+        UWSClientStateSubsystem ClientState = UWSClientStateSubsystem::Get();
+        if (ClientState != nullptr && ClientState.VersionProblem.IsEmpty())
+            ClientState.KickReason = Reason.Left(300);
+    }
+
+    UFUNCTION(Client)
+    void WSClientVersionMismatch(FString ServerVersion)
+    {
+        UWSVersionSubsystem Versions = UWSVersionSubsystem::Get();
+        APlayerController PC = Cast<APlayerController>(Owner);
+        if (Versions != nullptr && PC != nullptr)
+            Versions.LeaveServer(PC, ServerVersion);
     }
 };

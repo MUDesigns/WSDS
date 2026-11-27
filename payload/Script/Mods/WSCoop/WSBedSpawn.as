@@ -62,7 +62,10 @@ namespace WSBedSpawn
         const bool bSame = Manager.HasBedSpawnAt(Key, BedLocation);
         Manager.SetBedSpawn(Key, BedLocation, Wake, Yaw);
         WSCoop::Info(f"Bed spawn set for {WSCoop::PlayerName(Player)} at {BedLocation} (wake {Wake})");
-        WSCoop::Notify(Player, bSame ? "This bed is already your spawn point." : "You will wake up here after you die.", bSame ? "Spawn Point" : "Spawn Point Set");
+        // At night the bed is also for sleeping (see WSSleep); its notice says enough when the spawn point didn't change.
+        const bool bSleeping = WSSleep::TryToSleep(Player, Marker);
+        if (!bSleeping || !bSame)
+            WSCoop::Notify(Player, bSame ? "This bed is already your spawn point." : "You will wake up here after you die.", bSame ? "Spawn Point" : "Spawn Point Set");
     }
 
     // Server, from the respawn checkpoint teleport: send a respawning player to their bed. False = no (valid) bed.

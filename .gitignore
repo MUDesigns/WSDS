@@ -12,6 +12,8 @@ _testdata/
 ServerConfig.json
 /WSDS.exe
 /WSDS.old.exe
+/WSCoopUpdater*.exe
+/client-version.txt
 *.log
 *.bak
 

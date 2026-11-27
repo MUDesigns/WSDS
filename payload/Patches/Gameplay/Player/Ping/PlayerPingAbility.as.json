@@ -1,0 +1,16 @@
+{
+ "path": "Gameplay/Player/Ping/PlayerPingAbility.as",
+ "vanilla": "3962B3D340C97BD40A2DDE2CB7FBAFDE4720A87C4D5C6EFE9F7D30290B23AC4C",
+ "patched": "90FB2F34E3E282957A27198E8B7C731C8ED095F1AE2FDC2FBDCBA12CF67BEDB3",
+ "hunks": [
+  {
+   "at": 89,
+   "remove": [],
+   "add": [
+    "        if (System::IsServer())\r\n",
+    "            WSMapMarkers::OnVanillaPing(Player, PingTarget, PingLocation); // [WSCoop] beam, compass and map at any distance\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}

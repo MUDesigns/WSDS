@@ -27,10 +27,11 @@
       <a data-page="console">Console</a>
       <a data-page="bans">Bans</a>
       <a data-page="backups">Backups</a>
+      <a data-page="restarts">Restarts</a>
       <a data-page="settings">Settings</a>
       <div class="menu-foot">
         <div class="muted small" id="footWorld">-</div>
-        <div class="muted small" id="footVersion">WSDS 0.0.49</div>
+        <div class="muted small" id="footVersion">WSDS 0.0.50</div>
       </div>
     </nav>
 
@@ -133,13 +134,28 @@
 
       <!-- ================= Bans ================= -->
       <section id="page-bans" class="page">
-        <div class="frame fill"><i class="c3"></i><i class="c4"></i>
+        <div class="frame"><i class="c3"></i><i class="c4"></i>
           <h2>Bans</h2>
           <table class="table">
             <thead><tr><th>Name</th><th>Id</th><th>Reason</th><th>Date</th><th class="right"></th></tr></thead>
             <tbody id="banRows"></tbody>
           </table>
           <div class="empty" id="bansEmpty">No bans.</div>
+        </div>
+
+        <div class="frame stacked"><i class="c3"></i><i class="c4"></i>
+          <div class="row between"><h2>Whitelist</h2><span class="wlbadge" id="wlBadge">Off</span></div>
+          <p class="small" id="wlInfo"></p>
+          <div class="row gap">
+            <input type="text" id="wlName" maxlength="64" placeholder="Add by player name" />
+            <button class="btn small" id="wlAdd">Add</button>
+          </div>
+          <p class="muted small">Players who are online can also be added from the Players page (Whitelist button), which adds their player id as well as their name.</p>
+          <table class="table">
+            <thead><tr><th>Name</th><th>Id</th><th>Added</th><th class="right"></th></tr></thead>
+            <tbody id="wlRows"></tbody>
+          </table>
+          <div class="empty" id="wlEmpty">Nobody is on the whitelist yet.</div>
         </div>
       </section>
 
@@ -155,6 +171,24 @@
             <tbody id="bkRows"></tbody>
           </table>
           <div class="empty" id="bkEmpty">No backups yet. The server makes one automatically, or press Back Up Now.</div>
+        </div>
+      </section>
+
+      <!-- ================= Restarts ================= -->
+      <section id="page-restarts" class="page">
+        <div class="settings-wrap">
+          <div class="frame settings"><i class="c3"></i><i class="c4"></i>
+            <div class="row between"><h2>Scheduled Restarts</h2>
+              <div class="row gap"><span class="muted small" id="rsSaved"></span><button class="btn" id="rsSave">Save</button></div>
+            </div>
+            <div class="rsstatus"><span id="rsGem" class="gem off"></span><span id="rsStatus">Loading...</span></div>
+            <div class="row gap">
+              <button class="btn dark" id="rsNow">Restart in 5 minutes</button>
+              <button class="btn danger" id="rsCancel" style="display:none">Cancel restart</button>
+            </div>
+            <p class="muted small">A restart saves the world and every player, stops the server and starts it again. Players can rejoin after about a minute. A daily restart keeps a server that runs for weeks fresh.</p>
+            <div id="rsForm"></div>
+          </div>
         </div>
       </section>
 

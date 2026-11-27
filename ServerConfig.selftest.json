@@ -26,7 +26,12 @@
     "CovenSkillShare": 0.25,
     "BedSpawn": true,
     "LuminaryRespec": true,
-    "MapMarkers": true
+    "MapMarkers": true,
+    "MaxMarkersPerPlayer": 3,
+    "DeathMarkers": true,
+    "SleepThroughNight": true,
+    "Pings": true,
+    "QuickStack": true
   },
   "ExtraArgs": "-WSSelfTest -WSAutoCreateCharacters"
 }

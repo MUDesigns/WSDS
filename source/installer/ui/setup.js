@@ -129,6 +129,7 @@ const PAGES = {
       if (st.uninstalled) return `<h1>Uninstalled</h1><p>The original game files were restored${flavor === "server" ? " and the background service, firewall rules and shortcuts were removed. Server worlds were kept in WitchspireCoopMod\\ServerData" : ""}.</p>`;
       const r = st.result || {};
       if (flavor === "client") return `<h1>Ready to play</h1><p>The Co-op Overhaul is installed. Start Witchspire and choose <span class="gold">Join Dedicated Server</span> in the main menu.</p>
+        <p>The mod now keeps itself up to date: when a new version is out, Witchspire offers it at the main menu.</p>
         <p class="muted small">Steam may revert the mod when the game updates. If that happens, run this setup again.</p>
         <div class="row gap"><button class="btn" id="fPlay">Launch Witchspire</button></div>`;
       const addr = r.publicIp || "this server's public address";

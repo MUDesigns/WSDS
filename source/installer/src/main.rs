@@ -1,6 +1,12 @@
-// Witchspire Co-op Mod Setup / WSDS Setup.
-// One code base, two builds: `--features client` (players) and `--features server` (WSDS + dedicated server).
+// Witchspire Co-op Mod Setup / WSDS Setup / WSCoopUpdater.
+// One code base, three builds: `--features client` (players), `--features server` (WSDS + dedicated server)
+// and `--features updater` (WSCoopUpdater.exe, the players' auto-updater, see updater.rs).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// The updater reuses a few helpers; the setup-only code is unused (and dropped by the linker) there.
+#![cfg_attr(feature = "updater", allow(dead_code))]
+
+#[cfg(feature = "updater")]
+mod updater;
 
 use serde_json::{json, Value};
 use std::fs;
@@ -18,13 +24,25 @@ const APP_ID: &str = "2679100";
 
 #[cfg(feature = "server")]
 const FLAVOR: &str = "server";
-#[cfg(not(feature = "server"))]
+#[cfg(all(feature = "updater", not(feature = "server")))]
+const FLAVOR: &str = "updater";
+#[cfg(not(any(feature = "server", feature = "updater")))]
 const FLAVOR: &str = "client";
 
 #[cfg(feature = "server")]
 static PAYLOAD: &[u8] = include_bytes!("../payload/server.zip");
-#[cfg(not(feature = "server"))]
+#[cfg(all(feature = "updater", not(feature = "server")))]
+static PAYLOAD: &[u8] = &[];
+#[cfg(not(any(feature = "server", feature = "updater")))]
 static PAYLOAD: &[u8] = include_bytes!("../payload/client.zip");
+
+/// The player setup installs the updater next to the mod (built first, see build.rs / BuildInstallers.ps1).
+#[cfg(not(any(feature = "server", feature = "updater")))]
+static UPDATER_EXE: &[u8] = include_bytes!("../payload/WSCoopUpdater.exe");
+#[cfg(any(feature = "server", feature = "updater"))]
+static UPDATER_EXE: &[u8] = &[];
+
+const UPDATE_PROTOCOL_KEY: &str = "HKCU\\Software\\Classes\\wscoop-update";
 
 #[derive(Default)]
 struct Steam {
@@ -133,6 +151,65 @@ fn extract_payload(dest_root: &Path, only_prefix: Option<&str>) -> Result<usize,
     Ok(n)
 }
 
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// Writes an exe that may be running right now: a running exe cannot be overwritten or deleted but can be
+/// renamed, so it is moved aside as <name>.old-<time>.exe (the updater deletes those at its next start).
+/// Returns false when the file already had exactly these bytes.
+fn replace_exe(target: &Path, bytes: &[u8]) -> Result<bool, String> {
+    if fs::read(target).map(|b| b == bytes).unwrap_or(false) {
+        return Ok(false);
+    }
+    if fs::write(target, bytes).is_ok() {
+        return Ok(true);
+    }
+    let stem = target.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let aside = target.with_file_name(format!("{stem}.old-{}.exe", now_secs()));
+    fs::rename(target, &aside).map_err(|e| format!("{} is in use and could not be moved aside: {e}", target.display()))?;
+    if let Err(e) = fs::write(target, bytes) {
+        let _ = fs::rename(&aside, target);
+        return Err(format!("{}: {e}", target.display()));
+    }
+    Ok(true)
+}
+
+/// Per-user URL protocol wscoop-update:// -> WSCoopUpdater.exe (the game's main menu opens it).
+fn register_update_protocol(updater: &Path) -> Result<(), String> {
+    let command = format!("\"{}\" \"%1\"", updater.display());
+    let key = UPDATE_PROTOCOL_KEY;
+    let cmd_key = format!("{key}\\shell\\open\\command");
+    let runs: [Vec<&str>; 3] = [
+        vec!["add", key, "/ve", "/d", "URL:Witchspire Co-op Mod Update", "/f"],
+        vec!["add", key, "/v", "URL Protocol", "/t", "REG_SZ", "/f"],
+        vec!["add", &cmd_key, "/ve", "/d", &command, "/f"],
+    ];
+    for args in runs {
+        let out = run_hidden("reg", &args).map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(format!("reg {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim()));
+        }
+    }
+    Ok(())
+}
+
+/// Removes the protocol when it points into this mod folder (or at an updater that no longer exists).
+fn unregister_update_protocol(mod_root: &Path) {
+    let Some(cmd) = reg_default(&format!("{UPDATE_PROTOCOL_KEY}\\shell\\open\\command")) else { return };
+    let exe = cmd.trim().trim_start_matches('"').split('"').next().unwrap_or("").to_string();
+    let ours = exe.to_lowercase().starts_with(&mod_root.display().to_string().to_lowercase());
+    if ours || !Path::new(&exe).exists() {
+        let _ = run_hidden("reg", &["delete", UPDATE_PROTOCOL_KEY, "/f"]);
+    }
+}
+
+fn reg_default(key: &str) -> Option<String> {
+    let out = run_hidden("reg", &["query", key, "/ve"]).ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    text.lines().find(|l| l.contains("REG_SZ")).and_then(|l| l.split("REG_SZ").nth(1)).map(|s| s.trim().to_string())
+}
+
 // ------------------------------------------------------------------ game detection & fonts
 
 #[tauri::command]
@@ -197,11 +274,16 @@ fn check_game(path: String) -> Value {
 #[tauri::command]
 async fn fonts(path: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let tmp = std::env::temp_dir().join("wscoop-setup-tools");
-        if extract_payload(&tmp, Some("WitchspireCoopMod/tools/")).is_err() {
-            return json!({});
-        }
-        let repak = tmp.join("WitchspireCoopMod\\tools\\repak.exe");
+        let repak = if FLAVOR == "updater" {
+            // The updater has no payload: use the tools the setup installed next to the mod.
+            PathBuf::from(&path).join("WitchspireCoopMod\\tools\\repak.exe")
+        } else {
+            let tmp = std::env::temp_dir().join("wscoop-setup-tools");
+            if extract_payload(&tmp, Some("WitchspireCoopMod/tools/")).is_err() {
+                return json!({});
+            }
+            tmp.join("WitchspireCoopMod\\tools\\repak.exe")
+        };
         let pak = PathBuf::from(&path).join("Hercules\\Content\\Paks\\Hercules-Windows.pak");
         let mut out = json!({});
         if !repak.exists() || !pak.exists() {
@@ -496,6 +578,15 @@ fn do_install(app: &AppHandle, opts: &Value) -> Result<Value, String> {
     }
 
     if FLAVOR == "client" {
+        step(app, "Setting up automatic updates");
+        let updater = mod_root.join("WSCoopUpdater.exe");
+        replace_exe(&updater, UPDATER_EXE)?;
+        fs::write(mod_root.join("client-version.txt"), env!("CARGO_PKG_VERSION")).map_err(|e| e.to_string())?;
+        // Not fatal: the mod works without it, only the update offer in the main menu is missing.
+        match register_update_protocol(&updater) {
+            Ok(()) => progress(app, "The game will offer new mod versions at the main menu."),
+            Err(e) => progress(app, &format!("Could not register the updater ({e}).")),
+        }
         return Ok(json!({ "modRoot": mod_root.display().to_string() }));
     }
 
@@ -617,6 +708,9 @@ fn uninstall(app: AppHandle, path: String) -> Result<(), String> {
                 if !line.trim().is_empty() {
                     progress(&app, line.trim());
                 }
+            }
+            if FLAVOR == "client" {
+                unregister_update_protocol(&mod_root);
             }
             step(&app, "Removing mod files");
             // Keep server worlds (ServerData) - everything else goes.
@@ -749,10 +843,15 @@ fn ensure_webview2() {
 }
 
 fn main() {
-    ensure_webview2();
-    tauri::Builder::default()
-        .manage(SteamState::default())
-        .invoke_handler(tauri::generate_handler![info, auto_mark, auto_done, detect_game, check_game, fonts, steamcmd_start, steamcmd_cancel, install, uninstall, launch, open_path])
-        .run(tauri::generate_context!())
-        .expect("error while running setup");
+    #[cfg(feature = "updater")]
+    updater::main(tauri::generate_context!());
+    #[cfg(not(feature = "updater"))]
+    {
+        ensure_webview2();
+        tauri::Builder::default()
+            .manage(SteamState::default())
+            .invoke_handler(tauri::generate_handler![info, auto_mark, auto_done, detect_game, check_game, fonts, steamcmd_start, steamcmd_cancel, install, uninstall, launch, open_path])
+            .run(tauri::generate_context!())
+            .expect("error while running setup");
+    }
 }

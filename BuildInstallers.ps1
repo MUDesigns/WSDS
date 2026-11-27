@@ -1,5 +1,5 @@
 # Developer tool: builds the two setup programs into .\dist
-#   "Witchspire Co-op Mod Setup.exe"  - players (mod only)
+#   "Witchspire Co-op Mod Setup.exe"  - players (mod only; embeds WSCoopUpdater.exe, built first)
 #   "WSDS Setup.exe"                  - dedicated server (SteamCMD download, WSDS, background service)
 # Run BuildPackage.ps1 first so payload\ holds the current mod.
 param([switch]$SkipWsds)
@@ -43,7 +43,10 @@ $common = @('Install.ps1', 'Uninstall.ps1', 'README.md', 'payload', 'tools')
 New-Payload (Join-Path $inst 'payload\client.zip') ($common + @('ClientConfig.json', 'JoinServer.ps1', 'JoinServer.bat')) @{}
 New-Payload (Join-Path $inst 'payload\server.zip') ($common + @('ServerInstall.ps1', 'StartServer.ps1', 'StartServer.bat')) @{ 'WSDS.exe' = $wsdsExe }
 
+# The updater comes first: the client setup embeds it (payload\WSCoopUpdater.exe, see build.rs).
+$updaterExe = Join-Path $inst 'payload\WSCoopUpdater.exe'
 $flavors = @(
+    @{ Feature = 'updater'; Name = 'Witchspire Co-op Mod Update'; Icons = 'icons-client'; Out = $updaterExe },
     @{ Feature = 'client'; Name = 'Witchspire Co-op Mod Setup'; Icons = 'icons-client' },
     @{ Feature = 'server'; Name = 'WSDS Setup'; Icons = 'icons-server' }
 )
@@ -56,7 +59,8 @@ try {
         (Get-Item build.rs).LastWriteTime = Get-Date   # re-embed icon and version info
         cargo build --release --no-default-features --features $f.Feature
         if ($LASTEXITCODE) { throw "$($f.Name) build failed" }
-        Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release\wscoop-installer.exe') (Join-Path $dist "$($f.Name).exe") -Force
+        $out = if ($f.Out) { $f.Out } else { Join-Path $dist "$($f.Name).exe" }
+        Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release\wscoop-installer.exe') $out -Force
     }
 } finally {
     Remove-Item Env:TAURI_CONFIG, Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
@@ -71,6 +75,11 @@ if (Test-Path $rel) { Remove-Item -Recurse -Force $rel }
 New-Item -ItemType Directory -Force $rel | Out-Null
 Copy-Item $wsdsExe (Join-Path $rel "WSDS-$version.exe")
 New-Payload (Join-Path $rel "WSDS-Server-Update-$version.zip") @('Install.ps1', 'Uninstall.ps1', 'ServerInstall.ps1', 'StartServer.ps1', 'StartServer.bat', 'README.md', 'payload') @{ 'WSDS.exe' = $wsdsExe }
+# The players' update package used by WSCoopUpdater.exe. Never tools\ (it holds a game-derived DLL).
+# The updater records this version as installed, and the client setup its own Cargo version: they must match.
+$clientVersion = ((Get-Content (Join-Path $inst 'Cargo.toml') | Select-String '^version = "(.+)"').Matches[0].Groups[1].Value)
+if ($clientVersion -ne $version) { throw "source\installer\Cargo.toml has version $clientVersion but WSDS has $version - bump both." }
+New-Payload (Join-Path $rel "WSCoop-Client-Update-$version.zip") @('Install.ps1', 'Uninstall.ps1', 'README.md', 'payload', 'ClientConfig.json', 'JoinServer.ps1', 'JoinServer.bat') @{ 'WSCoopUpdater.exe' = $updaterExe }
 Push-Location $rel
 try {
     Get-ChildItem -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object { '{0} *{1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content -Encoding ascii 'SHA256SUMS.txt'

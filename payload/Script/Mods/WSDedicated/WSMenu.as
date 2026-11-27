@@ -137,6 +137,20 @@ class UWSMenuSubsystem : UScriptWorldSubsystem
             }
         }
 
+        // Mod version: explain a version mismatch from the last server; once per session ask the updater for news.
+        if (ClientState != nullptr)
+        {
+            // Shown a moment later, so they land on top of the game's own welcome popup.
+            if (!ClientState.VersionProblem.IsEmpty() || !ClientState.KickReason.IsEmpty())
+                System::SetTimer(this, n"ShowPendingProblem", 2.0, false);
+            else if (!ClientState.bUpdateCheckDone && !System::ParseParam(System::GetCommandLine(), "WSNoUpdateCheck"))
+            {
+                ClientState.bUpdateCheckDone = true;
+                if (WSVersion::HasUpdater())
+                    WSVersion::OpenUpdater("check");
+            }
+        }
+
         if (JoinButton == nullptr || !DialogClass.IsValid())
         {
             WSDS::Info("Menu: Join Dedicated Server entry unavailable (menu layout changed?)");
@@ -149,6 +163,64 @@ class UWSMenuSubsystem : UScriptWorldSubsystem
         if (Label != nullptr)
             Label.SetText(FText::FromString("Join Dedicated Server"));
         JoinButton.SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+
+    UFUNCTION()
+    private void ShowPendingProblem()
+    {
+        UWSClientStateSubsystem ClientState = UWSClientStateSubsystem::Get();
+        if (ClientState == nullptr)
+            return;
+        if (!ClientState.VersionProblem.IsEmpty())
+        {
+            const FString Problem = ClientState.VersionProblem;
+            const bool bUpdate = ClientState.bVersionUpdateHelps;
+            ClientState.VersionProblem = "";
+            ClientState.KickReason = "";
+            ShowVersionProblem(Problem, bUpdate);
+        }
+        else if (!ClientState.KickReason.IsEmpty())
+        {
+            const FString Reason = ClientState.KickReason;
+            ClientState.KickReason = "";
+            ShowMessage("Disconnected by the server", Reason);
+        }
+    }
+
+    private void ShowVersionProblem(const FString& Problem, bool bUpdate)
+    {
+        UClass ModalClass = Cast<UClass>(LoadObject(UClass, WSLuminaryRespec::ConfirmModalClassPath));
+        if (ModalClass == nullptr || Game::GetHUD() == nullptr)
+            return;
+        TSubclassOf<UHercActivatableWidget> WidgetClass = ModalClass;
+        UConfirmModalWidget Modal = Cast<UConfirmModalWidget>(Game::GetHUD().PushWidgetToLayer(WidgetClass, EUILayer::MenuModal));
+        if (Modal == nullptr)
+            return;
+        const FString Confirm = WSVersion::HasUpdater() ? "Update now" : "Download page";
+        Modal.WSSetTexts(FText::FromString(bUpdate ? "Co-op mod update needed" : "Different co-op mod version"), FText::FromString(Problem),
+            FText::FromString(bUpdate ? Confirm : "OK"), FText::FromString(bUpdate ? "Later" : "Close"));
+        if (bUpdate)
+            Modal.OnConfirmClickedDelegate.AddUFunction(this, n"OnUpdateNowClicked");
+        WSDS::Info(f"Menu: version problem shown ({Problem})");
+    }
+
+    private void ShowMessage(const FString& Title, const FString& Text)
+    {
+        UClass ModalClass = Cast<UClass>(LoadObject(UClass, WSLuminaryRespec::ConfirmModalClassPath));
+        if (ModalClass == nullptr || Game::GetHUD() == nullptr)
+            return;
+        TSubclassOf<UHercActivatableWidget> WidgetClass = ModalClass;
+        UConfirmModalWidget Modal = Cast<UConfirmModalWidget>(Game::GetHUD().PushWidgetToLayer(WidgetClass, EUILayer::MenuModal));
+        if (Modal == nullptr)
+            return;
+        Modal.WSSetTexts(FText::FromString(Title), FText::FromString(Text), FText::FromString("OK"), FText::FromString("Close"));
+        WSDS::Info(f"Menu: message shown ({Title}: {Text})");
+    }
+
+    UFUNCTION()
+    private void OnUpdateNowClicked(UCommonButtonBase Button)
+    {
+        WSVersion::OpenUpdater("update");
     }
 
     UFUNCTION()
