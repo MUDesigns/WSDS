@@ -91,6 +91,88 @@ namespace WSMapMarkersTest
             }
             return f"bag{Out}";
         }
+        if (Action == "reroll")
+        {
+            // Needs: give <player> Items.Wand_Master 1 and Items.SpiritDustBrilliant N first.
+            UItemStack Weapon = nullptr;
+            for (int Slot = 0; Slot < P.InventoryComp.GetCapacity(); Slot++)
+            {
+                UItemStack S = P.InventoryComp.GetItemStackAtSlot(Slot);
+                if (WSWeaponReroll::IsMasterWeapon(S))
+                    Weapon = S;
+            }
+            if (Weapon == nullptr)
+                return "FAIL no master weapon in the bag";
+            UClass StationClass = Cast<UClass>(LoadObject(UClass, "/Game/Gameplay/Crafting/Refiner/ItemCrafting/BP_ItemCraftingStation.BP_ItemCraftingStation_C"));
+            AItemCraftingWorkstation Station = StationClass != nullptr ? Cast<AItemCraftingWorkstation>(SpawnActor(StationClass, P.GetActorLocation() + FVector(-250, 0, -80), FRotator(0, 0, 0))) : nullptr;
+            if (Station == nullptr)
+                return "FAIL no station";
+            UItemRuntimeFragment_Rarity Rarity = Weapon.GetRuntimeFragment_Rarity();
+            if (Rarity.GetRarity() == EItemRarity::Common)
+                Rarity.SetRarity(EItemRarity::Epic);
+            Station.GetItemStackCraftingComponent().SetCurrentCraftingItemStack(Weapon);
+            const FString Before = WSWeaponReroll::StatLines(Rarity).Replace("\n", "; ");
+            const int DustBefore = WSWeaponReroll::DustOwned(Station, Weapon);
+            WSWeaponReroll::ServerReroll(Cast<APlayerController>(P.Controller), Station);
+            const FString After = WSWeaponReroll::StatLines(Rarity).Replace("\n", "; ");
+            const int DustAfter = WSWeaponReroll::DustOwned(Station, Weapon);
+            return f"{Weapon.GetItemTag()} {Rarity.GetRarity()}: [{Before}] -> [{After}] dust {DustBefore} -> {DustAfter}";
+        }
+        if (Action == "stationselect")
+        {
+            TArray<AItemCraftingWorkstation> Stations;
+            GetAllActorsOfClass(Stations);
+            AItemCraftingWorkstation Best = nullptr;
+            for (AItemCraftingWorkstation St : Stations)
+            {
+                if (Best == nullptr || St.GetActorLocation().Distance(P.GetActorLocation()) < Best.GetActorLocation().Distance(P.GetActorLocation()))
+                    Best = St;
+            }
+            for (int Slot = 0; Slot < P.InventoryComp.GetCapacity() && Best != nullptr; Slot++)
+            {
+                UItemStack S = P.InventoryComp.GetItemStackAtSlot(Slot);
+                if (WSWeaponReroll::IsMasterWeapon(S))
+                {
+                    Best.GetItemStackCraftingComponent().SetCurrentCraftingItemStack(S);
+                    return f"selected {S.GetItemTag()} at {Best.GetName()}";
+                }
+            }
+            return "FAIL no station or weapon";
+        }
+        if (Action == "famsalvage")
+        {
+            // Needs: give <player> Items.FamiliarBompus 1 (or any familiar item) first.
+            UItemStack Familiar = nullptr;
+            for (int Slot = 0; Slot < P.InventoryComp.GetCapacity(); Slot++)
+            {
+                UItemStack S = P.InventoryComp.GetItemStackAtSlot(Slot);
+                if (WSFamiliarSalvage::IsFamiliar(S))
+                    Familiar = S;
+            }
+            if (Familiar == nullptr)
+                return "FAIL no familiar in the bag";
+            UClass StationClass = Cast<UClass>(LoadObject(UClass, "/Game/Gameplay/Crafting/Refiner/Salvage/BP_SalvageStation.BP_SalvageStation_C"));
+            ASalvageWorkStation Station = StationClass != nullptr ? Cast<ASalvageWorkStation>(SpawnActor(StationClass, P.GetActorLocation() + FVector(0, -250, -80), FRotator(0, 0, 0))) : nullptr;
+            if (Station == nullptr)
+                return "FAIL no salvage station";
+            UInventoryComponent Input = nullptr;
+            for (UActorComponent C : Station.GetComponentsByClass(UInventoryComponent))
+            {
+                UInventoryComponent I = Cast<UInventoryComponent>(C);
+                if (I != nullptr && I.GetCapacity() == 8)
+                    Input = I;
+            }
+            if (Input == nullptr)
+                return "FAIL no input inventory";
+            UItemRuntimeFragment_FamiliarInfo Info = Cast<UItemRuntimeFragment_FamiliarInfo>(Familiar.GetRuntimeFragment(UItemRuntimeFragment_FamiliarInfo));
+            const FString Desc = f"{Familiar.GetItemTag()} level {Info.GetLevel()} rarity {Familiar.GetItemRarity()} salvageable={ItemUtils::IsItemSalvagable(Familiar)}";
+            Input.TransferItemStack(Familiar);
+            Station.SalvageItems();
+            FString Out;
+            for (UItemStack S : Station.GetOutputInventoryComponent().AllItemStacks)
+                Out += f" {S.GetItemTag()}x{S.GetStackSize()}";
+            return f"{Desc} -> input left {Input.AllItemStacks.Num()}, output:{Out}";
+        }
         if (Action == "quickstack")
         {
             WSQuickStack::ServerQuickStack(PC);

@@ -416,6 +416,12 @@ class AWSCoopManager : AGameManager
     UPROPERTY(Replicated, Transient)
     int MaxMarkersPerPlayer = 3;
 
+    UPROPERTY(Replicated, Transient)
+    bool bWeaponRerollEnabled = false;
+
+    UPROPERTY(Replicated, Transient)
+    bool bFamiliarSalvageEnabled = false;
+
     // ---- map markers ----
 
     // Index of a player's marker with that id, -1 if none.

@@ -1,0 +1,23 @@
+{
+ "path": "Gameplay/Items/Utils/ItemUtils.as",
+ "vanilla": "FF7101A15AF082A1E10B4B4BAA17B0D10E38481967398C22B15AB18F5006ADA9",
+ "patched": "520BAB82B8E9EACCEDB08A833FEE165CB5C580B9D0287A99B23AF6A1E7499ED7",
+ "hunks": [
+  {
+   "at": 176,
+   "remove": [],
+   "add": [
+    "        if (WSFamiliarSalvage::CanSalvage(ItemStack)) // [WSCoop] familiars can be salvaged\r\n",
+    "            return true;\r\n"
+   ]
+  },
+  {
+   "at": 186,
+   "remove": [],
+   "add": [
+    "        if (WSFamiliarSalvage::IsFamiliar(ItemStack)) // [WSCoop] essence and dust by rarity and level\r\n",
+    "            return WSFamiliarSalvage::Roll(OutItems, ItemStack);\r\n"
+   ]
+  }
+ ]
+}

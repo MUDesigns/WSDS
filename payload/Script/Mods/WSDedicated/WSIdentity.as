@@ -250,6 +250,14 @@ class UWSIdentityComponent : UHercActorComponent
         ReportedModVersion = Version.Left(32);
     }
 
+    // 0.0.53: weapon stat re-roll at the enhancement station (see WSWorkstationExtras). Named to sort after every
+    // older RPC of this component.
+    UFUNCTION(Server)
+    void WSServerWeaponReroll(AItemCraftingWorkstation Station)
+    {
+        WSWeaponReroll::ServerReroll(Cast<APlayerController>(Owner), Station);
+    }
+
     // Why the server is about to disconnect this game (shown on the main menu).
     UFUNCTION(Client)
     void WSClientKickReason(FString Reason)

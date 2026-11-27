@@ -1,0 +1,21 @@
+{
+ "path": "UserInterface/Crafting/Workstations/ItemCrafting/ItemCraftingWeaponCustomizationContentWidget.as",
+ "vanilla": "53150070C2F914402994C0A0F0CE085966ACA5B0FC92709E44822C63C36225F5",
+ "patched": "BE1C3CA3A9D6A0501B429F40D87325C92790C0CD518EEB1DF6D08B282683C8B8",
+ "hunks": [
+  {
+   "at": 59,
+   "remove": [],
+   "add": [
+    "        WSWeaponReroll::Attach(this, Button_ItemUpgrade); // [WSCoop] re-roll stats\r\n"
+   ]
+  },
+  {
+   "at": 226,
+   "remove": [],
+   "add": [
+    "        WSWeaponReroll::Refresh(this, ItemCraftingWorkstation, WeaponItemStack); // [WSCoop]\r\n"
+   ]
+  }
+ ]
+}

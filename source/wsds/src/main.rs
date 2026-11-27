@@ -39,7 +39,7 @@ const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
 // The game server runs above normal priority: started by the background service (Task Scheduler's
 // default is below normal) or next to a game on the same PC, it otherwise gets only leftover CPU and hitches.
 const SERVER_CREATION_FLAGS: u32 = CREATE_NO_WINDOW | ABOVE_NORMAL_PRIORITY_CLASS;
-const VERSION: &str = "0.0.52";
+const VERSION: &str = "0.0.53";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config
@@ -113,7 +113,7 @@ fn default_config() -> Value {
         "Backups": { "IntervalMinutes": 60, "Keep": 48 }
     });
     // Added separately: one json! this size exceeds the macro recursion limit.
-    for (k, v) in [("MaxMarkersPerPlayer", json!(3)), ("DeathMarkers", json!(true)), ("SleepThroughNight", json!(true)), ("Pings", json!(true)), ("QuickStack", json!(true))] {
+    for (k, v) in [("MaxMarkersPerPlayer", json!(3)), ("DeathMarkers", json!(true)), ("SleepThroughNight", json!(true)), ("Pings", json!(true)), ("QuickStack", json!(true)), ("WeaponReroll", json!(true)), ("FamiliarSalvage", json!(true))] {
         cfg["Coop"][k] = v;
     }
     cfg["Restarts"] = json!({

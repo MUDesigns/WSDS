@@ -150,6 +150,8 @@ exactly as in normal play.
 | `SleepThroughNight` | `true` | At night (20:00 to 6:00), pressing interact on a bed also lies you down to sleep (it still sets your spawn point). When every living player online is asleep, everyone's screen fades and the clock jumps to 7:00. Moving away from the bed gets you up. |
 | `Pings` | `true` | The game's own ping (middle mouse button) only shows to players nearby. With this on, everyone also gets a short beam, a compass marker at any distance and a map icon for 10 seconds, labelled with who pinged what ("Name: Enemy", "Chest", "Resource", ...). A pinged creature is followed. |
 | `QuickStack` | `true` | A **Quick Stack** button next to the inventory's Sort Inventory button moves items from your bag (not the hotbar) into chests within 15 m that already hold the same kind of item. |
+| `WeaponReroll` | `true` | At the weapon enhancement station, a **Re-roll Stats** button under Upgrade gives a Master or Grandmaster weapon new random stat lines of the same rarity for 5 Brilliant Spirit Dust (from the bag or the hearth's shared storage, like upgrade costs). Common weapons have no stat lines. |
+| `FamiliarSalvage` | `true` | Familiars can be put into the salvage station. Salvaging one gives 1 Magick Essence and 2 Spirit Dust per rarity step (Common 1, Rare 2, Epic 3, Legendary 4); the familiar's level picks the tier of both: up to 9 Spirit Dust and Lesser Magick Essence, 10-19 Greater, 20 and above Brilliant. A summoned familiar has to be dismissed first. |
 | `LuminaryRespec` | `true` | Take luminaries back for free, for yourself and for your familiars: right-click an allocated luminary to refund its point (gamepad: the menu's Undo action on the selected one); press R (the menu's Reset action) in a luminary menu and confirm to refund every luminary in it. A luminary that another one still depends on has to wait until that one is taken back. Free skill-reward luminaries are kept. |
 
 World-wide effects of quests (key items, corruption events, global narration) happen once per
@@ -179,6 +181,8 @@ world, not once per player.
   longer (`OnScreenMessage.as`, `GlowingTextWidget.as`).
 * Marker types, death markers and long-range pings (`WSMapMarkers.as`): the game's ping (`PlayerPingAbility.as`)
   also tells the server, which shares it with everyone; graves are the game's own grave chests.
+* Weapon stat re-roll and familiar salvage (`WSWorkstationExtras.as`; hooks in `ItemCraftingWeaponCustomizationContentWidget.as`
+  and `ItemUtils.as`).
 * Gatherable tracker (`WSGatherTracker.as`, client side): **Track Gatherables** at the bottom right of the world map
   lists the kinds of gatherables seen around you (trees, stumps, deposits, flowers, satchels...) with what they
   give and how many are nearby. Pick any number of them: the nearest 3 of each are shown on the compass with

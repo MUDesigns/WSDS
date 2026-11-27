@@ -31,7 +31,9 @@
     "DeathMarkers": true,
     "SleepThroughNight": true,
     "Pings": true,
-    "QuickStack": true
+    "QuickStack": true,
+    "WeaponReroll": true,
+    "FamiliarSalvage": true
   },
   "ExtraArgs": "-WSSelfTest -WSAutoCreateCharacters"
 }
