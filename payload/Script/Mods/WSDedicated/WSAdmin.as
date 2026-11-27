@@ -298,6 +298,17 @@ namespace WSAdmin
             const FString Outcome = WSCoopLoot::ViewTest(Args[1], FindController(Args[2]), PCB, Seconds);
             Result(!Outcome.StartsWith("FAIL"), Cmd, Outcome);
         }
+        else if (Cmd == "bedtest" && Args.Num() >= 2 && System::ParseParam(System::GetCommandLine(), "WSDevTools"))
+        {
+            // bedtest scan | place|set|status|kill|respawn|destroy <player>
+            const FString Outcome = WSBedSpawnTest::Run(Args[1], Args.Num() >= 3 ? FindPlayer(Args[2]) : nullptr);
+            Result(!Outcome.StartsWith("FAIL"), Cmd, Outcome);
+        }
+        else if (Cmd == "lumtest" && Args.Num() >= 3 && System::ParseParam(System::GetCommandLine(), "WSDevTools"))
+        {
+            const FString Outcome = WSLuminaryRespecTest::Run(Args, FindPlayer(Args[2]));
+            Result(!Outcome.StartsWith("FAIL"), Cmd, Outcome);
+        }
         else if (Cmd == "players" || Cmd == "status")
         {
             Admin.EmitState();

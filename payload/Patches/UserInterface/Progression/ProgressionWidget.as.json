@@ -1,0 +1,49 @@
+{
+ "path": "UserInterface/Progression/ProgressionWidget.as",
+ "vanilla": "E564658FF675534B83F07C87A1327FEA843ED10E6E4B47D222F7D8E2615CC6D1",
+ "patched": "05EFE153966F5C3D6CB9059B10D501B04CF490647DE705E30FFE11A8B14B026D",
+ "hunks": [
+  {
+   "at": 82,
+   "remove": [],
+   "add": [
+    "\r\n",
+    "        // [WSCoop] Luminary respec: \"reset\" takes back the whole menu (after a confirmation), \"undo\" the selected one.\r\n",
+    "        UWSLuminaryRespecSubsystem Respec = WSLuminaryRespec::Tracker();\r\n",
+    "        if (Respec != nullptr && Respec.RegisterPanel(this))\r\n",
+    "        {\r\n",
+    "            UInputAction ResetAction = WSLuminaryRespec::LoadAction(WSLuminaryRespec::ResetActionPath);\r\n",
+    "            UInputAction UndoAction = WSLuminaryRespec::LoadAction(WSLuminaryRespec::UndoActionPath);\r\n",
+    "            if (ResetAction != nullptr)\r\n",
+    "                RegisterUIActionBinding(ResetAction, FSimpleDynamicDelegate(this, n\"WSOnResetPressed\"));\r\n",
+    "            if (UndoAction != nullptr)\r\n",
+    "                RegisterUIActionBinding(UndoAction, FSimpleDynamicDelegate(this, n\"WSOnUndoPressed\"));\r\n",
+    "        }\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop]\r\n",
+    "    UFUNCTION()\r\n",
+    "    private void WSOnResetPressed()\r\n",
+    "    {\r\n",
+    "        if (ProgressionComponent == nullptr)\r\n",
+    "            return;\r\n",
+    "        WSLuminaryRespec::AskResetConfirmation(this, n\"WSOnResetConfirmed\", ProgressionComponent.Owner.IsA(ANPCBase));\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop]\r\n",
+    "    UFUNCTION()\r\n",
+    "    private void WSOnResetConfirmed(UCommonButtonBase Button)\r\n",
+    "    {\r\n",
+    "        WSLuminaryRespec::RequestReset(ProgressionComponent);\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop]\r\n",
+    "    UFUNCTION()\r\n",
+    "    private void WSOnUndoPressed()\r\n",
+    "    {\r\n",
+    "        if (SelectedUnlockWidget != nullptr)\r\n",
+    "            SelectedUnlockWidget.WSRequestRefund();\r\n"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,38 @@
+{
+ "path": "Gameplay/Progression/ProgressionUnlockDefinition.as",
+ "vanilla": "487475BE5A513D8B8E9CEC8AA50AF2B50695C2A714EEDAFAA276D0C27F7E59F9",
+ "patched": "0FAFB93B82F201454EB7F687C3D5385C87E78F6BAA7713FFDBC3D23207326FBA",
+ "hunks": [
+  {
+   "at": 319,
+   "remove": [],
+   "add": [
+    "    // [WSCoop] Same as GiveAbilitySet / GiveGameplayEffect, but hands back what was granted so a luminary\r\n",
+    "    // respec can take it away again (see WSLuminaryRespec).\r\n",
+    "    bool WSGiveAbilitySet(UHercAbilityComponent AbilityComponent, FHercAbilitySet_GrantedHandles& OutHandles) const\r\n",
+    "    {\r\n",
+    "        if (Type != EProgressionUnlockType::Skill || AbilitySet == nullptr)\r\n",
+    "            return false;\r\n",
+    "        OutHandles = AbilityComponent.GiveAbilitySet(AbilitySet);\r\n",
+    "        return true;\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    void WSGiveGameplayEffect(UHercAbilityComponent AbilityComponent, TArray<FActiveGameplayEffectHandle>& OutHandles) const\r\n",
+    "    {\r\n",
+    "        if (Type != EProgressionUnlockType::GameplayEffect || !GameplayEffect.IsValid())\r\n",
+    "            return;\r\n",
+    "        TSubclassOf<UGameplayEffect> LoadedGameplayEffect = GameplayEffect.TryLoadClass();\r\n",
+    "        if (LoadedGameplayEffect == nullptr)\r\n",
+    "            return;\r\n",
+    "        FGameplayEffectSpecHandle NewEffectSpec = AbilityComponent.MakeOutgoingSpec(LoadedGameplayEffect, 0, AbilityComponent.MakeEffectContext());\r\n",
+    "        NewEffectSpec.Spec.SetByCallerMagnitude(GameplayTags::Effects_Set_Magnitude, Magnitude);\r\n",
+    "        for (int Idx = 0; Idx < Stacks; Idx++)\r\n",
+    "        {\r\n",
+    "            OutHandles.Add(AbilityComponent.ApplyGameplayEffectSpecToSelf(NewEffectSpec));\r\n",
+    "        }\r\n",
+    "    }\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}

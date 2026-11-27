@@ -66,6 +66,8 @@ const SCHEMA = [
     { k: "Coop.CovenRange", label: "Coven range (cm)", type: "number", min: 500, max: 50000, step: 500 },
     { k: "Coop.CovenBonusPerMember", label: "Bonus per nearby member", type: "number", step: 0.05, min: 0, max: 2 },
     { k: "Coop.CovenSkillShare", label: "Skill XP shared with nearby members", type: "number", step: 0.05, min: 0, max: 1 },
+    { k: "Coop.BedSpawn", label: "Bed spawn points", type: "toggle", help: "Press interact on a bed to respawn there after dying instead of at your last hearth." },
+    { k: "Coop.LuminaryRespec", label: "Luminary respec", type: "toggle", help: "Right-click a luminary to take it back and get its point back; R in a luminary menu resets that menu. Works for player and familiar luminaries." },
   ]},
   { section: "Administration", step: "Admin", fields: [
     { k: "Coop.CoOwnerPermissions", label: "Who may build in sanctuaries", type: "select", options: [["AllPlayers", "Everyone (co-owners)"], ["AdminsOnly", "Admins only"]] },

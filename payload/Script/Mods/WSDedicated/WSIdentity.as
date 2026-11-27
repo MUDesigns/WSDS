@@ -196,4 +196,18 @@ class UWSIdentityComponent : UHercActorComponent
         if (View != nullptr)
             View.LocalUnhide(Key);
     }
+
+    // Luminary respec requests from this player's menus (see WSLuminaryRespec). Kept last and named to sort
+    // after the older RPCs, so their network indexes stay the same as in earlier versions.
+    UFUNCTION(Server)
+    void ServerWSLuminaryRefund(UProgressionComponent Comp, const UProgressionUnlockDefinition Unlock, FGameplayTag PassiveTag)
+    {
+        WSLuminaryRespec::ServerRefund(Cast<APlayerController>(Owner), Comp, Unlock, PassiveTag);
+    }
+
+    UFUNCTION(Server)
+    void ServerWSLuminaryReset(UProgressionComponent Comp)
+    {
+        WSLuminaryRespec::ServerReset(Cast<APlayerController>(Owner), Comp);
+    }
 };

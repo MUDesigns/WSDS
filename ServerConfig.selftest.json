@@ -23,7 +23,9 @@
     "CovenSynergy": true,
     "CovenRange": 5000,
     "CovenBonusPerMember": 0.1,
-    "CovenSkillShare": 0.25
+    "CovenSkillShare": 0.25,
+    "BedSpawn": true,
+    "LuminaryRespec": true
   },
   "ExtraArgs": "-WSSelfTest -WSAutoCreateCharacters"
 }

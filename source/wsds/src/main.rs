@@ -35,7 +35,7 @@ const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
 // The game server runs above normal priority: started by the background service (Task Scheduler's
 // default is below normal) or next to a game on the same PC, it otherwise gets only leftover CPU and hitches.
 const SERVER_CREATION_FLAGS: u32 = CREATE_NO_WINDOW | ABOVE_NORMAL_PRIORITY_CLASS;
-const VERSION: &str = "0.0.47";
+const VERSION: &str = "0.0.48";
 const WITCHSPIRE_APP_ID: &str = "2679100";
 
 // ================================================================ paths & config
@@ -101,7 +101,9 @@ fn default_config() -> Value {
             "CovenSynergy": true,
             "CovenRange": 5000,
             "CovenBonusPerMember": 0.1,
-            "CovenSkillShare": 0.25
+            "CovenSkillShare": 0.25,
+            "BedSpawn": true,
+            "LuminaryRespec": true
         }
     })
 }

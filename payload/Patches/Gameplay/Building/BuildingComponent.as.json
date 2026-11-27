@@ -1,7 +1,7 @@
 {
  "path": "Gameplay/Building/BuildingComponent.as",
  "vanilla": "FC768D9DA8407638FBD97B87BF43BF17221A66EF38C9668C2606AB1AA3709873",
- "patched": "1D0AD43BB02D06167FDFFBA2763D60494064D3FE1D0F1DB2F57CF7C84C348BB8",
+ "patched": "2B6F7400636B4D200962A53A9456A053EC4700A5C70FCD712701CA52E1B51C3B",
  "hunks": [
   {
    "at": 280,
@@ -17,6 +17,13 @@
    "add": [
     "            return;\r\n",
     "        if (!WSCoopPermissions::Check(Cast<APlayerCharacter>(Owner), \"destroy buildings\")) // [WSCoop]\r\n"
+   ]
+  },
+  {
+   "at": 330,
+   "remove": [],
+   "add": [
+    "        WSBedSpawn::OnBuildingDestroyed(Building); // [WSCoop]\r\n"
    ]
   }
  ]

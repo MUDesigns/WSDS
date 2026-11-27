@@ -1,0 +1,17 @@
+{
+ "path": "Core/Character/TeleportComponent.as",
+ "vanilla": "5BF071C20C881BDF64C59B7636E7990B85CB5B7A353E2BAF5FB980803BB75405",
+ "patched": "D1C3A9696EF806D5CDC0CB1DFFD5C0E59AF010F71A8BE95B20EA046F9C78EF05",
+ "hunks": [
+  {
+   "at": 82,
+   "remove": [],
+   "add": [
+    "            return;\r\n",
+    "\r\n",
+    "        // [WSCoop] Respawning (leaving the death spirit form): wake up at the player's bed if they set one.\r\n",
+    "        if (!Checkpoint::HasTemporaryCheckpoint(Player) && WSBedSpawn::TeleportToBed(Player))\r\n"
+   ]
+  }
+ ]
+}

@@ -118,6 +118,8 @@ exactly as in normal play.
 | `CovenRange` | `5000` | Range (cm) for counting nearby coven members. |
 | `CovenBonusPerMember` | `0.1` | +10% kill and skill XP per nearby member, and a 10% bonus-harvest chance per nearby member. |
 | `CovenSkillShare` | `0.25` | Nearby members receive 25% of the skill XP (gathering, crafting, taming...) a member earns. |
+| `BedSpawn` | `true` | Press interact on a bed to make it your spawn point: when you respawn after dying you wake up on that bed instead of at your last hearth. Each player has their own bed; any bed can be used by anyone. Dungeon checkpoints still come first, and a revive by a friend still happens on the spot. Destroying the bed clears the spawn point. |
+| `LuminaryRespec` | `true` | Take luminaries back for free, for yourself and for your familiars: right-click an allocated luminary to refund its point (gamepad: the menu's Undo action on the selected one); press R (the menu's Reset action) in a luminary menu and confirm to refund every luminary in it. A luminary that another one still depends on has to wait until that one is taken back. Free skill-reward luminaries are kept. |
 
 World-wide effects of quests (key items, corruption events, global narration) happen once per
 world, not once per player.
@@ -131,6 +133,13 @@ world, not once per player.
 * Game fixes needed for a hostless server: the time-of-day sync no longer floods joining clients
   with reliable RPCs, quest key items are granted without a local host, and map fog bookkeeping
   works without a GPU.
+* Bed spawn points (`WSBedSpawn.as`): the server puts a small interactable marker on every loaded bed;
+  the respawn checkpoint teleport (`TeleportComponent.as`) sends players to their bed; destroying a bed
+  (`BuildingComponent.as`) clears it. Spawn points are saved in the world.
+* Luminary respec (`WSLuminaryRespec.as`): the progression component remembers what each luminary
+  granted (`ProgressionComponent.as`, `ProgressionUnlockDefinition.as`) so it can be taken back; the
+  luminary menus get right-click, Undo and Reset (`ProgressionUnlockWidget.as`, `ProgressionWidget.as`,
+  `ConfirmModalWidget.as`).
 
 ## Troubleshooting
 

@@ -264,6 +264,88 @@ class AWSCoopManager : AGameManager
     UPROPERTY(SaveGame)
     private TArray<FString> QuestCache;
 
+    // Bed spawn points (see WSBedSpawn): "<playerKey>|<bedX>|<bedY>|<bedZ>|<wakeX>|<wakeY>|<wakeZ>|<yaw>".
+    UPROPERTY(SaveGame)
+    private TArray<FString> BedSpawns;
+
+    private int FindBedSpawn(const FString& Key) const
+    {
+        const FString Prefix = f"{Key}|";
+        for (int i = 0; i < BedSpawns.Num(); ++i)
+        {
+            if (BedSpawns[i].StartsWith(Prefix))
+                return i;
+        }
+        return -1;
+    }
+
+    void SetBedSpawn(const FString& Key, const FVector& Bed, const FVector& Wake, float Yaw)
+    {
+        if (Key.IsEmpty())
+            return;
+        const FString Entry = f"{Key}|{Bed.X:.1f}|{Bed.Y:.1f}|{Bed.Z:.1f}|{Wake.X:.1f}|{Wake.Y:.1f}|{Wake.Z:.1f}|{Yaw:.1f}";
+        const int Index = FindBedSpawn(Key);
+        if (Index >= 0)
+            BedSpawns[Index] = Entry;
+        else
+            BedSpawns.Add(Entry);
+        MarkSaveGameDirty();
+    }
+
+    bool GetBedSpawn(const FString& Key, FVector& OutBed, FVector& OutWake, float& OutYaw) const
+    {
+        const int Index = FindBedSpawn(Key);
+        if (Index < 0)
+            return false;
+        TArray<FString> F;
+        BedSpawns[Index].ParseIntoArray(F, "|", false);
+        if (F.Num() != 8)
+            return false;
+        OutBed = FVector(String::Conv_StringToDouble(F[1]), String::Conv_StringToDouble(F[2]), String::Conv_StringToDouble(F[3]));
+        OutWake = FVector(String::Conv_StringToDouble(F[4]), String::Conv_StringToDouble(F[5]), String::Conv_StringToDouble(F[6]));
+        OutYaw = float(String::Conv_StringToDouble(F[7]));
+        return true;
+    }
+
+    bool HasBedSpawnAt(const FString& Key, const FVector& Bed) const
+    {
+        FVector B;
+        FVector W;
+        float Y = 0;
+        return GetBedSpawn(Key, B, W, Y) && B.Distance(Bed) < 30.0;
+    }
+
+    void ClearBedSpawn(const FString& Key)
+    {
+        const int Index = FindBedSpawn(Key);
+        if (Index < 0)
+            return;
+        BedSpawns.RemoveAt(Index);
+        MarkSaveGameDirty();
+    }
+
+    // Forgets every spawn point on the bed at that spot; returns whose they were.
+    TArray<FString> ClearBedSpawnsAt(const FVector& Bed)
+    {
+        TArray<FString> Keys;
+        for (int i = BedSpawns.Num() - 1; i >= 0; --i)
+        {
+            TArray<FString> F;
+            BedSpawns[i].ParseIntoArray(F, "|", false);
+            if (F.Num() != 8)
+                continue;
+            const FVector B(String::Conv_StringToDouble(F[1]), String::Conv_StringToDouble(F[2]), String::Conv_StringToDouble(F[3]));
+            if (B.Distance(Bed) < 30.0)
+            {
+                Keys.Add(F[0]);
+                BedSpawns.RemoveAt(i);
+            }
+        }
+        if (Keys.Num() > 0)
+            MarkSaveGameDirty();
+        return Keys;
+    }
+
     void NotePlayer(const FString& Key, const FString& PlayerName, int64 NowUnix)
     {
         if (Key.IsEmpty())

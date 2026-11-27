@@ -1,0 +1,22 @@
+{
+ "path": "UserInterface/FrontEnd/MainMenu/StartGame/Modal/ConfirmModalWidget.as",
+ "vanilla": "2579CD3CBF53860274F56EBF29D4D48898D9DFB7ECE71E731221DEC5CA88C1B4",
+ "patched": "2AE10FF539B8E16C9D6E0FEAEF031AE4F7FA714CE42A17547364F32225158329",
+ "hunks": [
+  {
+   "at": 65,
+   "remove": [],
+   "add": [
+    "    // [WSCoop] Reuse the generic modal with other texts (luminary reset).\r\n",
+    "    void WSSetTexts(const FText& InMain, const FText& InSecondary, const FText& InConfirm, const FText& InCancel)\r\n",
+    "    {\r\n",
+    "        Text_Main.SetText(InMain);\r\n",
+    "        Text_Secondary.SetText(InSecondary);\r\n",
+    "        Button_Confirm.SetText(InConfirm);\r\n",
+    "        Button_Cancel.SetText(InCancel);\r\n",
+    "    }\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}
