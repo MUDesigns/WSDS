@@ -179,6 +179,11 @@ world, not once per player.
   longer (`OnScreenMessage.as`, `GlowingTextWidget.as`).
 * Marker types, death markers and long-range pings (`WSMapMarkers.as`): the game's ping (`PlayerPingAbility.as`)
   also tells the server, which shares it with everyone; graves are the game's own grave chests.
+* Gatherable tracker (`WSGatherTracker.as`, client side): **Track Gatherables** at the bottom right of the world map
+  lists the kinds of gatherables seen around you (trees, stumps, deposits, flowers, satchels...) with what they
+  give and how many are nearby. Pick any number of them: the nearest 3 of each are shown on the compass with
+  the item's icon, name and distance. Only gatherables loaded around you are found, and ones you have already
+  gathered are skipped. The choice is saved on your PC.
 * Sleep through the night (`WSSleep.as`), quick stack (`WSQuickStack.as`), and the player list: hold **P** to see
   everyone online with level, health, ping, distance and direction, and who is down or asleep (`WSPlayerList.as`).
 * Joining with a big character: the game re-sends all six action-slot input bindings as separate reliable

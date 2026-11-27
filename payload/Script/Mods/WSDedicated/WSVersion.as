@@ -13,7 +13,7 @@
 
 namespace WSVersion
 {
-    const FString ModVersion = "0.0.51";
+    const FString ModVersion = "0.0.52";
     const FString DownloadPage = "https://www.nexusmods.com/witchspire/mods/62";
 
     // Seconds the server waits for a version report after a player's identity arrived.

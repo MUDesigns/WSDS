@@ -366,6 +366,9 @@ namespace WSMapMarkers
     // Left-click on the world map: place a marker of the selected type.
     void OnMapClicked(FVector WorldLocation)
     {
+        UWSGatherTracker Tracker = UWSGatherTracker::Get();
+        if (Tracker != nullptr && Tracker.IsDialogOpen())
+            return; // a click beside the gatherables dialog doesn't place markers
         FVector Target = WorldLocation;
         FVector Ground;
         if (FindGroundForMapSpot(WorldLocation, Ground))
@@ -412,12 +415,24 @@ namespace WSMapMarkers
             V.FinishMapLabels(Overlay);
     }
 
+    // The map's root is a mask (one child) around a canvas that fills the map area: our controls go on that canvas.
+    UPanelWidget MapCanvas(UWorldMapWidget Widget)
+    {
+        UPanelWidget Root = Cast<UPanelWidget>(Widget.GetRootWidget());
+        while (Root != nullptr && Cast<UContentWidget>(Root) != nullptr && Root.GetChildrenCount() == 1)
+            Root = Cast<UPanelWidget>(Root.GetChildAt(0));
+        return Root;
+    }
+
     void RegisterMapActions(UWorldMapWidget Widget)
     {
         UWSMapMarkerView V = View();
         if (V == nullptr || Widget == nullptr)
             return;
         V.ShowTypeBar(Widget);
+        UWSGatherTracker Tracker = UWSGatherTracker::Get();
+        if (Tracker != nullptr)
+            Tracker.ShowMapButton(Widget);
         if (V.RegisteredMaps.Contains(Widget))
             return;
         V.RegisteredMaps.Add(Widget);
@@ -473,9 +488,9 @@ class UWSMapMarkerView : UScriptWorldSubsystem
 
     private UClass BeamClass;
     private UClass TeammateIconClass;
-    private UClass MarkerIconClass;
+    UClass MarkerIconClass;
     private TSubclassOf<UCommonTextStyle> CompassLabelStyle;
-    private TSubclassOf<UCommonTextStyle> MapLabelStyle;
+    TSubclassOf<UCommonTextStyle> MapLabelStyle;
     private TMap<FString, UTexture2D> Icons;
     private bool bAssetsLoaded = false;
     private bool bServerFlagsSet = false;
@@ -905,7 +920,7 @@ class UWSMapMarkerView : UScriptWorldSubsystem
 
     // ---- compass icons ----
 
-    private UCompassIconWidget MakeCompassIcon(UClass IconClass, FVector Location, APlayerController PC, UHUDWidget HUD)
+    UCompassIconWidget MakeCompassIcon(UClass IconClass, FVector Location, APlayerController PC, UHUDWidget HUD)
     {
         UCompassIconWidget Icon = Cast<UCompassIconWidget>(WidgetBlueprint::CreateWidget(IconClass, PC));
         if (Icon == nullptr)
@@ -955,7 +970,7 @@ class UWSMapMarkerView : UScriptWorldSubsystem
     }
 
     // Marker icons get the kind's texture and colour; teammate icons (Texture null) only the colour.
-    private void ColorCompassIcon(UCompassIconWidget Icon, FLinearColor Color, UTexture2D Texture)
+    void ColorCompassIcon(UCompassIconWidget Icon, FLinearColor Color, UTexture2D Texture)
     {
         TArray<UWidget> All;
         Icon.GetAllWidgets(All);
@@ -975,7 +990,7 @@ class UWSMapMarkerView : UScriptWorldSubsystem
         }
     }
 
-    private void SetCompassLabel(UCompassIconWidget Icon, const FString& LabelName, APlayerController PC)
+    void SetCompassLabel(UCompassIconWidget Icon, const FString& LabelName, APlayerController PC)
     {
         APawn Pawn = PC.GetControlledPawn();
         const float Meters = Pawn != nullptr ? Pawn.GetActorLocation().Dist2D(Icon.GetTargetLocation()) / 100.0 : 0;
@@ -1001,7 +1016,7 @@ class UWSMapMarkerView : UScriptWorldSubsystem
             Label.SetText(FText::FromString(Shown.IsEmpty() ? "" : f"{Shown}  {DistanceText}"));
     }
 
-    private void RemoveCompassIcon(UCompassIconWidget Icon, UHUDWidget HUD)
+    void RemoveCompassIcon(UCompassIconWidget Icon, UHUDWidget HUD)
     {
         if (Icon == nullptr)
             return;
@@ -1108,10 +1123,7 @@ class UWSMapMarkerView : UScriptWorldSubsystem
                 Up = Next;
             }
         }
-        // The map's root is a mask (one child) around a canvas that fills the map area: the bar goes on that canvas.
-        UPanelWidget Root = Cast<UPanelWidget>(Widget.GetRootWidget());
-        while (Root != nullptr && Cast<UContentWidget>(Root) != nullptr && Root.GetChildrenCount() == 1)
-            Root = Cast<UPanelWidget>(Root.GetChildAt(0));
+        UPanelWidget Root = WSMapMarkers::MapCanvas(Widget);
         if (Root == nullptr)
         {
             WSCoop::Info("Map markers: the map has no panel to hold the marker type bar");
