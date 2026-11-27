@@ -181,6 +181,10 @@ world, not once per player.
   also tells the server, which shares it with everyone; graves are the game's own grave chests.
 * Sleep through the night (`WSSleep.as`), quick stack (`WSQuickStack.as`), and the player list: hold **P** to see
   everyone online with level, health, ping, distance and direction, and who is down or asleep (`WSPlayerList.as`).
+* Joining with a big character: the game re-sends all six action-slot input bindings as separate reliable
+  messages every time one action changes, which can overflow the connection while a character with many items
+  and familiars loads (`Reliable buffer overflow`, the player is disconnected at once). The server now only
+  sends real changes (`WSActionBinds.as`, `ActionComponent.as`).
 * Version check (`WSVersion.as`): the server publishes its mod version and every game compares it with its own.
   A game with another version leaves and the main menu explains why, with an **Update now** button that starts
   the Co-op Mod updater. Games from before 0.0.50 get a notice that they need the new mod. Players the server

@@ -1,0 +1,25 @@
+{
+ "path": "Core/Actions/ActionComponent.as",
+ "vanilla": "4150BE822482692AB3B978507483A5AF5BB66CBDCCF15813EA81C1C32616206F",
+ "patched": "7A1290715C3B5EB8877F73C8B783AC87EE6D042E812A33AC9EFB5C298B888820",
+ "hunks": [
+  {
+   "at": 123,
+   "remove": [
+    "                AbilityComp.BindInputToAbility(ActionSlotTags[Slot], ActionDescriptor.AbilityClass);\r\n"
+   ],
+   "add": [
+    "                WSActionBinds::Bind(AbilityComp, Slot, ActionSlotTags[Slot], ActionDescriptor.AbilityClass); // [WSCoop] only real changes go over the network\r\n"
+   ]
+  },
+  {
+   "at": 142,
+   "remove": [
+    "        AbilityComp.UnbindInputFromAbility(UActionComponent::GetSlotTags()[Slot]);\r\n"
+   ],
+   "add": [
+    "        WSActionBinds::Unbind(AbilityComp, Slot, UActionComponent::GetSlotTags()[Slot]); // [WSCoop] only real changes go over the network\r\n"
+   ]
+  }
+ ]
+}

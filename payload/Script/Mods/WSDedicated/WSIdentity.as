@@ -24,6 +24,13 @@ namespace WSIdentity
     // Client side: the identity this machine reports to dedicated servers.
     FString GetLocalIdentity()
     {
+        // Developer test (-WSDevTools -WSDevIdentity=steam_<id>): join as another character.
+        if (System::ParseParam(System::GetCommandLine(), "WSDevTools"))
+        {
+            const FString Forced = WSDS::Param("WSDevIdentity", "");
+            if (!Forced.IsEmpty())
+                return Forced;
+        }
         UWSIdentitySave Save = Cast<UWSIdentitySave>(Gameplay::LoadGameFromSlot(LocalSlot, 0));
 
         // Running under Steam: use the SteamID and remember it, so sessions started without Steam
