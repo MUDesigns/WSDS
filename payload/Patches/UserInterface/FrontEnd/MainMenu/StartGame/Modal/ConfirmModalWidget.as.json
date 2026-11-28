@@ -1,7 +1,7 @@
 {
  "path": "UserInterface/FrontEnd/MainMenu/StartGame/Modal/ConfirmModalWidget.as",
  "vanilla": "2579CD3CBF53860274F56EBF29D4D48898D9DFB7ECE71E731221DEC5CA88C1B4",
- "patched": "2AE10FF539B8E16C9D6E0FEAEF031AE4F7FA714CE42A17547364F32225158329",
+ "patched": "EE83C87BB6D6345D508C2B8E693F032AF5DC2E800D16EB306D6F32CE27869764",
  "hunks": [
   {
    "at": 65,
@@ -14,6 +14,12 @@
     "        Text_Secondary.SetText(InSecondary);\r\n",
     "        Button_Confirm.SetText(InConfirm);\r\n",
     "        Button_Cancel.SetText(InCancel);\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop] Where extra content goes (split amount).\r\n",
+    "    UWidget WSSecondaryText() const\r\n",
+    "    {\r\n",
+    "        return Text_Secondary;\r\n",
     "    }\r\n",
     "\r\n"
    ]

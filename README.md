@@ -183,6 +183,14 @@ world, not once per player.
   also tells the server, which shares it with everyone; graves are the game's own grave chests.
 * Weapon stat re-roll and familiar salvage (`WSWorkstationExtras.as`; hooks in `ItemCraftingWeaponCustomizationContentWidget.as`
   and `ItemUtils.as`).
+* Split amount, gear compare and buff timers (`WSQoLExtras.as`, client side; hooks in `InventoryWidget.as`,
+  `TooltipWidget.as`, `ConfirmModalWidget.as` and `ConsumeAbility.as`):
+  * **Split** in an item's menu opens a dialog with a slider and a number box to choose how many to take (1 to all
+    but one; starts at half; Enter confirms).
+  * Item tooltips for weapons, hats, rings and trinkets show **Compared to equipped**: level, damage and rarity
+    against the item in the same slot, and the stat lines you would gain or lose.
+  * Food and potion buffs of 15 seconds or more show under the compass with the time left (orange in the last
+    30 seconds).
 * Gatherable tracker (`WSGatherTracker.as`, client side): **Track Gatherables** at the bottom right of the world map
   lists the kinds of gatherables seen around you (trees, stumps, deposits, flowers, satchels...) with what they
   give and how many are nearby. Pick any number of them: the nearest 3 of each are shown on the compass with

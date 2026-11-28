@@ -1,0 +1,36 @@
+{
+ "path": "UserInterface/Crafting/Inventory/InventoryWidget.as",
+ "vanilla": "133C89611F5F88F7C2B58DBA070B4058355A692E8FCFA7F2F37BEA03096C6252",
+ "patched": "4B7773BB8B2FFE459F065A2030C28E040AC0C6FFDBEA22B702A33B3E50D8EB52",
+ "hunks": [
+  {
+   "at": 467,
+   "remove": [],
+   "add": [
+    "        if (WSSplitStack::Open(this, ItemStack)) // [WSCoop] choose how many in a dialog\r\n",
+    "            return;\r\n",
+    "\r\n"
+   ]
+  },
+  {
+   "at": 468,
+   "remove": [],
+   "add": [
+    "        PlayerInventoryComp.GrabItemStackAmount(ItemStack, Amount);\r\n",
+    "    }\r\n",
+    "\r\n",
+    "    // [WSCoop] The split dialog's answer (see WSQoLExtras).\r\n",
+    "    void WSGrabAmount(UItemStack ItemStack, int Amount)\r\n",
+    "    {\r\n",
+    "        if (!IsValid(ItemStack) || Amount <= 0 || HUD.GetGrabbedItem() != nullptr)\r\n",
+    "            return;\r\n",
+    "        if (Amount >= ItemStack.GetStackSize())\r\n",
+    "        {\r\n",
+    "            HUD.SetGrabbedItem(ItemStack);\r\n",
+    "            PlayerInventoryComp.GrabItemStack(ItemStack);\r\n",
+    "            return;\r\n",
+    "        }\r\n"
+   ]
+  }
+ ]
+}

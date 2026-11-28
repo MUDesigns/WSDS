@@ -91,6 +91,75 @@ namespace WSMapMarkersTest
             }
             return f"bag{Out}";
         }
+        if (Action.StartsWith("eat="))
+        {
+            const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName("Items." + Action.RightChop(4)), false);
+            const UItemDefinition Def = Tag.IsValid() ? UItemSubsystem::GetItemDefinition(Tag) : nullptr;
+            const UItemFragment_StatusEffects SE = Def != nullptr ? Def.GetFragment(UItemFragment_StatusEffects) : nullptr;
+            UStatusEffectComponent Comp = UStatusEffectComponent::Get(P);
+            if (SE == nullptr || Comp == nullptr)
+                return "FAIL no such item with effects";
+            SE.ApplyToEffectComponent(P.AbilityComp, Comp);
+            const TArray<FActiveStatusEffect>& Active = Comp.GetActiveStatusEffects();
+            const float Added = Active.Num() > 0 ? Active[Active.Num() - 1].AddedTime : -1.0;
+            AGameStateBase GS = Gameplay::GetGameState();
+            const float GSTime = GS != nullptr ? GS.GetServerWorldTimeSeconds() : -1.0;
+            return f"applied {Tag}: {Active.Num()} active effects; added={Added} world={Game::GetWorldTimeSeconds()} gs={GSTime}";
+        }
+        if (Action == "equipweapon")
+        {
+            // Equips the first Master/Grandmaster weapon in the bag (another weapon stays in the bag to compare).
+            for (int Slot = 0; Slot < P.InventoryComp.GetCapacity(); Slot++)
+            {
+                UItemStack S = P.InventoryComp.GetItemStackAtSlot(Slot);
+                if (!WSWeaponReroll::IsMasterWeapon(S))
+                    continue;
+                UHercEquipmentInstance Old = P.EquipmentComp.GetEquipmentAtSlot(GameplayTags::EquipmentSlot_Hand);
+                if (Old != nullptr)
+                {
+                    UItemStack OldStack = Old.ItemStack;
+                    P.EquipmentComp.UnequipItem(Old);
+                    P.InventoryComp.AddItemStack(OldStack);
+                }
+                P.InventoryComp.RemoveItemStack(S);
+                P.EquipmentComp.EquipItem(S, GameplayTags::EquipmentSlot_Hand);
+                return f"equipped {S.GetItemTag()}";
+            }
+            return "FAIL no master weapon in the bag";
+        }
+        if (Action == "buffitems")
+        {
+            // Lists every item whose use gives timed effects (status effects or gameplay effects on use).
+            UItemSubsystem Items = UItemSubsystem::Get();
+            int Count = 0;
+            for (auto Pair : Items.Items)
+            {
+                const UItemDefinition Def = Pair.Value;
+                if (Def == nullptr)
+                    continue;
+                FString Line;
+                const UItemFragment_StatusEffects SE = Def.GetFragment(UItemFragment_StatusEffects);
+                if (SE != nullptr)
+                {
+                    for (const FStatusEffect& E : SE.Effects)
+                        Line += f" SE[{E.Duration}s excl={E.Exclusivity} hide={E.bHideFromUI} n={E.Effects.Num()}]";
+                }
+                const UItemFragment_GameplayEffects GE = Def.GetFragment(UItemFragment_GameplayEffects);
+                if (GE != nullptr)
+                {
+                    for (const FGameplayEffectFragEntry& E : GE.Effects)
+                    {
+                        if (E.GrantedBy != EGameplayEffectGrantType::OnEquip)
+                            Line += f" GE[{E.GrantedBy} {E.EffectDuration}s hide={E.bHideFromUI} {E.GetLocalizedText()}]";
+                    }
+                }
+                if (Line.IsEmpty())
+                    continue;
+                Count++;
+                WSCoop::Info(f"BUFFITEM {Pair.Key} '{Def.DisplayName}':{Line}");
+            }
+            return f"{Count} items with use effects (see BUFFITEM lines)";
+        }
         if (Action == "reroll")
         {
             // Needs: give <player> Items.Wand_Master 1 and Items.SpiritDustBrilliant N first.

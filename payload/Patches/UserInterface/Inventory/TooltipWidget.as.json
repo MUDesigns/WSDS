@@ -1,0 +1,21 @@
+{
+ "path": "UserInterface/Inventory/TooltipWidget.as",
+ "vanilla": "E34B8E5A2D372C87AD33E03F66C6B29394EAE66B7129A713EF8EAC7E3B7DE441",
+ "patched": "C208B7D43D3F0F070E0C2935390970F60C7203F9A2E64EF498D0DD75199FD240",
+ "hunks": [
+  {
+   "at": 152,
+   "remove": [],
+   "add": [
+    "        WSGearCompare::Clear(this); // [WSCoop]\r\n"
+   ]
+  },
+  {
+   "at": 336,
+   "remove": [],
+   "add": [
+    "        WSGearCompare::Fill(this, ItemStack); // [WSCoop] compare with equipped gear\r\n"
+   ]
+  }
+ ]
+}

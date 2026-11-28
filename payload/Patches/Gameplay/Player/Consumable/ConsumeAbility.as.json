@@ -1,0 +1,15 @@
+{
+ "path": "Gameplay/Player/Consumable/ConsumeAbility.as",
+ "vanilla": "879780E44CCD4E34245732BA9EE1C9E1B650FF495136B8F4BB59C5A011B73FBB",
+ "patched": "1DDBEF8FDCB58F0FFF20C555796BB6A31D53489E8B6A78BB195CEC6008EC02DF",
+ "hunks": [
+  {
+   "at": 73,
+   "remove": [],
+   "add": [
+    "        WSBuffTimers::NoteConsumed(ItemStack); // [WSCoop] names the buff timer\r\n",
+    "\r\n"
+   ]
+  }
+ ]
+}
